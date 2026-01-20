@@ -17,13 +17,11 @@
             width: 100%; font-size: 10px; padding: 2px; border: 1px solid #cbd5e1; border-radius: 4px;
         }
         
-        /* 表格固定寬度與捲軸優化 */
         .table-wrapper { height: calc(100vh - 220px); overflow: auto; border-radius: 8px; border: 1px solid #e2e8f0; }
         table { border-collapse: separate; border-spacing: 0; min-width: 1350px; }
         thead th { position: sticky; top: 0; background: #f8fafc; z-index: 10; border-bottom: 2px solid #e2e8f0; }
         .filter-row th { position: sticky; top: 37px; background: #f8fafc; z-index: 9; border-bottom: 1px solid #e2e8f0; }
         
-        /* 欄位寬度設定 */
         .col-stt { width: 50px; }
         .col-status { width: 80px; }
         .col-brand { width: 100px; }
@@ -34,9 +32,42 @@
         .col-days { width: 50px; }
         .col-person { width: 120px; }
         .col-action { width: 100px; }
+
+        /* 自定義右鍵選單樣式 */
+        #contextMenu {
+            display: none;
+            position: absolute;
+            z-index: 100;
+            background: white;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            border-radius: 8px;
+            padding: 4px;
+            min-width: 160px;
+        }
+        #contextMenu button {
+            width: 100%;
+            text-align: left;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 4px;
+            color: #475569;
+        }
+        #contextMenu button:hover {
+            background-color: #eff6ff;
+            color: #2563eb;
+        }
     </style>
 </head>
-<body class="bg-slate-100 text-slate-800 p-2">
+<body class="bg-slate-100 text-slate-800 p-2" onclick="hideContextMenu()">
+
+    <!-- 自定義右鍵選單 -->
+    <div id="contextMenu">
+        <button onclick="handleQuickCopy()">
+            <i data-lucide="copy-plus" class="inline-block w-3.5 h-3.5 mr-2"></i> 再次借出此型體
+        </button>
+    </div>
 
     <div class="max-w-full mx-auto">
         <!-- 頂部切換與統計 -->
@@ -60,12 +91,10 @@
                 </h1>
             </div>
             <div class="flex items-center gap-4">
-                <!-- 匯入匯出按鈕縮小並移除圖示 -->
                 <div class="flex gap-3 border-r pr-4 border-slate-200">
                     <button onclick="exportToCSV()" class="text-[11px] font-bold text-slate-400 hover:text-emerald-600 transition-colors uppercase tracking-tight">匯出報表</button>
                     <button onclick="openModal('importModal')" class="text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-tight">匯入資料</button>
                 </div>
-                <!-- 保持主要的「新增借出」明顯 -->
                 <button onclick="openAddModal()" class="flex items-center gap-1.5 bg-blue-600 text-white px-5 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 shadow-md transition-all active:scale-95">
                     <i data-lucide="plus" class="w-4 h-4"></i> 新增借出
                 </button>
@@ -120,7 +149,7 @@
         </div>
     </div>
 
-    <!-- 彈窗：匯入 -->
+    <!-- 彈窗系統 -->
     <div id="importModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
         <div class="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl">
             <div class="flex justify-between items-center mb-4"><h2 class="font-bold">匯入樣鞋資料</h2><button onclick="closeModal('importModal')"><i data-lucide="x"></i></button></div>
@@ -137,7 +166,6 @@
         </div>
     </div>
 
-    <!-- 彈窗：新增 -->
     <div id="addModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
         <div class="bg-white w-full max-w-lg rounded-xl p-6 shadow-2xl">
             <div class="flex justify-between items-center mb-4"><h2 class="font-bold">新增借出流水帳</h2><button onclick="closeModal('addModal')"><i data-lucide="x"></i></button></div>
@@ -155,7 +183,6 @@
         </div>
     </div>
 
-    <!-- 彈窗：歸還 -->
     <div id="returnModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
         <div class="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl">
             <div class="flex justify-between items-center mb-4"><h2 class="font-bold text-green-700">簽收歸還結案</h2><button onclick="closeModal('returnModal')"><i data-lucide="x"></i></button></div>
@@ -168,7 +195,6 @@
         </div>
     </div>
 
-    <!-- 彈窗：刪除確認 -->
     <div id="deleteModal" class="modal fixed inset-0 bg-black/70 z-50 items-center justify-center p-4">
         <div class="bg-white w-full max-w-xs rounded-2xl p-6 shadow-2xl text-center">
             <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4"><i data-lucide="alert-triangle" class="w-8 h-8"></i></div>
@@ -186,6 +212,7 @@
         let currentMode = 'confirm';
         let currentId = null;
         let filters = {};
+        let rightClickedRecord = null; // 暫存右鍵點擊的資料
 
         window.onload = () => {
             const saved = localStorage.getItem('sampleRoomLedger');
@@ -196,17 +223,12 @@
 
         function switchMode(mode) {
             currentMode = mode;
-            const tabC = document.getElementById('tabConfirm');
-            const tabF = document.getElementById('tabFitting');
+            document.getElementById('tabConfirm').className = (mode === 'confirm') ? 'px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-blue-600 text-blue-600' : 'px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500';
+            document.getElementById('tabFitting').className = (mode === 'fitting') ? 'px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-orange-600 text-orange-600' : 'px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500';
+            
             const title = document.getElementById('titleDisplay');
-            
-            tabC.className = (mode === 'confirm') ? 'px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-blue-600 text-blue-600' : 'px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500';
-            tabF.className = (mode === 'fitting') ? 'px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-orange-600 text-orange-600' : 'px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500';
-            
             if (title) {
-                const icon = (mode === 'confirm') ? 'layout-list' : 'zap';
-                const color = (mode === 'confirm') ? 'text-blue-600' : 'text-orange-500';
-                title.innerHTML = `<i data-lucide="${icon}" class="${color} w-5 h-5"></i> ${mode === 'confirm' ? '確認鞋管理 (Confirm)' : 'FITTING鞋管理 (Fitting)'}`;
+                title.innerHTML = `<i data-lucide="${mode === 'confirm' ? 'layout-list' : 'zap'}" class="${mode === 'confirm' ? 'text-blue-600' : 'text-orange-500'} w-5 h-5"></i> ${mode === 'confirm' ? '確認鞋管理 (Confirm)' : 'FITTING鞋管理 (Fitting)'}`;
                 lucide.createIcons();
             }
             filters = {};
@@ -214,13 +236,49 @@
             renderTable();
         }
 
+        // --- 右鍵選單邏輯 ---
+        function showContextMenu(e, id) {
+            e.preventDefault();
+            rightClickedRecord = dataStore[currentMode].find(x => x.id === id);
+            const menu = document.getElementById('contextMenu');
+            menu.style.display = 'block';
+            menu.style.left = e.pageX + 'px';
+            menu.style.top = e.pageY + 'px';
+        }
+
+        function hideContextMenu() {
+            document.getElementById('contextMenu').style.display = 'none';
+        }
+
+        function handleQuickCopy() {
+            if (!rightClickedRecord) return;
+            openAddModal(rightClickedRecord);
+            hideContextMenu();
+        }
+
         function openModal(id) { document.getElementById(id).classList.add('active'); }
         function closeModal(id) { document.getElementById(id).classList.remove('active'); }
         function getMD() { const d = new Date(); return `${d.getMonth() + 1}/${d.getDate()}`; }
 
-        function openAddModal() {
+        function openAddModal(prefill = null) {
             const max = dataStore[currentMode].reduce((m, r) => Math.max(m, parseInt(r.stt) || 0), 0);
+            
+            // 如果有帶入資料(右鍵複刻)，自動填入
+            if (prefill) {
+                document.getElementById('a_brand').value = prefill.brand;
+                document.getElementById('a_style').value = prefill.style;
+                document.getElementById('a_color').value = prefill.color;
+                document.getElementById('a_season').value = prefill.season;
+                document.getElementById('a_borrower').value = ''; // 借用人清空
+                document.getElementById('a_confirmer').value = ''; // 確認人清空
+            } else {
+                document.getElementById('addForm').reset();
+                document.getElementById('a_season').value = 'FA25';
+            }
+
             document.getElementById('a_loan').value = getMD();
+            document.getElementById('a_days').value = 2;
+
             document.getElementById('addForm').onsubmit = (e) => {
                 e.preventDefault();
                 dataStore[currentMode].unshift({
@@ -236,7 +294,6 @@
                     returnDate: '', returnedBy: '', confirmerReturn: ''
                 });
                 save(); renderTable(); closeModal('addModal');
-                document.getElementById('addForm').reset();
             };
             openModal('addModal');
         }
@@ -313,8 +370,12 @@
                 if (overdue) overdueCount++;
 
                 const tr = document.createElement('tr');
-                if (overdue) tr.className = 'overdue-row';
-                else if (isLent) tr.className = 'lent-row';
+                if (overdue) tr.className = 'overdue-row cursor-context-menu';
+                else if (isLent) tr.className = 'lent-row cursor-context-menu';
+                else tr.className = 'cursor-context-menu';
+
+                // 綁定右鍵事件
+                tr.oncontextmenu = (e) => showContextMenu(e, r.id);
 
                 tr.innerHTML = `
                     <td class="p-2 text-slate-400 font-mono">${r.stt}</td>
