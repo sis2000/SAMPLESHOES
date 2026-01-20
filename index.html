@@ -22,6 +22,7 @@
         thead th { position: sticky; top: 0; background: #f8fafc; z-index: 10; border-bottom: 2px solid #e2e8f0; }
         .filter-row th { position: sticky; top: 37px; background: #f8fafc; z-index: 9; border-bottom: 1px solid #e2e8f0; }
         
+        /* 欄位寬度設定 */
         .col-stt { width: 50px; }
         .col-status { width: 80px; }
         .col-brand { width: 100px; }
@@ -33,41 +34,14 @@
         .col-person { width: 120px; }
         .col-action { width: 100px; }
 
-        /* 自定義右鍵選單樣式 */
-        #contextMenu {
-            display: none;
-            position: absolute;
-            z-index: 100;
-            background: white;
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-            border-radius: 8px;
-            padding: 4px;
-            min-width: 160px;
-        }
-        #contextMenu button {
-            width: 100%;
-            text-align: left;
-            padding: 8px 12px;
-            font-size: 12px;
-            font-weight: 600;
-            border-radius: 4px;
-            color: #475569;
-        }
-        #contextMenu button:hover {
-            background-color: #eff6ff;
-            color: #2563eb;
-        }
+        /* 操作分頁樣式 */
+        .tab-btn { padding: 12px 0; font-weight: 800; font-size: 14px; flex: 1; text-align: center; border-bottom: 2px solid transparent; color: #94a3b8; transition: all 0.3s; }
+        .tab-btn.active { border-bottom-color: #2563eb; color: #2563eb; background: #eff6ff; }
+        .action-pane { display: none; padding: 24px; }
+        .action-pane.active { display: block; }
     </style>
 </head>
-<body class="bg-slate-100 text-slate-800 p-2" onclick="hideContextMenu()">
-
-    <!-- 自定義右鍵選單 -->
-    <div id="contextMenu">
-        <button onclick="handleQuickCopy()">
-            <i data-lucide="copy-plus" class="inline-block w-3.5 h-3.5 mr-2"></i> 再次借出此型體
-        </button>
-    </div>
+<body class="bg-slate-100 text-slate-800 p-2">
 
     <div class="max-w-full mx-auto">
         <!-- 頂部切換與統計 -->
@@ -95,7 +69,7 @@
                     <button onclick="exportToCSV()" class="text-[11px] font-bold text-slate-400 hover:text-emerald-600 transition-colors uppercase tracking-tight">匯出報表</button>
                     <button onclick="openModal('importModal')" class="text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-tight">匯入資料</button>
                 </div>
-                <button onclick="openAddModal()" class="flex items-center gap-1.5 bg-blue-600 text-white px-5 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 shadow-md transition-all active:scale-95">
+                <button onclick="openActionModal()" class="flex items-center gap-1.5 bg-blue-600 text-white px-5 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 shadow-md transition-all active:scale-95">
                     <i data-lucide="plus" class="w-4 h-4"></i> 新增借出
                 </button>
             </div>
@@ -147,59 +121,88 @@
             </table>
             <div id="emptyState" class="p-10 text-center text-slate-300 italic text-xs hidden">目前此類別帳本尚無資料</div>
         </div>
+        <p class="text-[10px] text-slate-400 mt-2 italic px-2">提示：對著型體「左鍵雙擊」可開啟操作中心進行歸還或再次借出。</p>
     </div>
 
-    <!-- 彈窗系統 -->
+    <!-- 操作中心彈窗 (核心升級：借還一體化) -->
+    <div id="actionModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
+        <div class="bg-white w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden">
+            <!-- 標籤切換 -->
+            <div class="flex border-b border-slate-100 bg-slate-50/50">
+                <button id="tabLoan" onclick="switchActionTab('loan')" class="tab-btn active">
+                    <i data-lucide="copy-plus" class="inline-block w-4 h-4 mr-1"></i> 新增借出記錄
+                </button>
+                <button id="tabReturn" onclick="switchActionTab('return')" class="tab-btn">
+                    <i data-lucide="check-square" class="inline-block w-4 h-4 mr-1"></i> 簽收歸還結案
+                </button>
+                <button onclick="closeModal('actionModal')" class="px-4 text-slate-400 hover:text-slate-600 transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- 型體基本資訊顯示區 -->
+            <div class="px-6 py-3 bg-blue-50/50 border-b border-blue-100 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <span id="displayBrand" class="font-black text-blue-800"></span>
+                    <span id="displayStyle" class="font-mono font-black text-blue-600 border-l pl-3 border-blue-200"></span>
+                </div>
+                <span id="displaySeason" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest"></span>
+            </div>
+
+            <!-- 分頁1: 新增借出 -->
+            <div id="paneLoan" class="action-pane active">
+                <form id="addForm" class="grid grid-cols-2 gap-4 text-xs font-semibold">
+                    <div class="col-span-1 space-y-1"><label class="text-slate-400">品牌 Brand</label><input type="text" id="a_brand" class="w-full border p-2.5 rounded outline-none focus:ring-2 focus:ring-blue-500 transition-all" required></div>
+                    <div class="col-span-1 space-y-1"><label class="text-slate-400">型號 Style #</label><input type="text" id="a_style" class="w-full border p-2.5 rounded outline-none focus:ring-2 focus:ring-blue-500 transition-all" required></div>
+                    <div class="col-span-1 space-y-1"><label class="text-slate-400">顏色 Colorway</label><input type="text" id="a_color" class="w-full border p-2.5 rounded outline-none"></div>
+                    <div class="col-span-1 space-y-1"><label class="text-slate-400">季節 Season</label><input type="text" id="a_season" class="w-full border p-2.5 rounded outline-none" value="FA25"></div>
+                    <div class="col-span-1 space-y-1"><label class="text-slate-400">借出日期 (M/D)</label><input type="text" id="a_loan" class="w-full border p-2.5 rounded outline-none"></div>
+                    <div class="col-span-1 space-y-1"><label class="text-slate-400">天數 Expected</label><input type="number" id="a_days" class="w-full border p-2.5 rounded outline-none" value="2"></div>
+                    <div class="col-span-1 space-y-1"><label class="text-slate-400 font-bold text-blue-600">借用人 By (必填)</label><input type="text" id="a_borrower" class="w-full border-2 border-blue-100 p-2.5 rounded outline-none focus:border-blue-500" required></div>
+                    <div class="col-span-1 space-y-1"><label class="text-slate-400">確認人 Confirmed</label><input type="text" id="a_confirmer" class="w-full border p-2.5 rounded outline-none"></div>
+                    <div class="col-span-2 pt-4"><button type="submit" class="w-full bg-blue-600 text-white py-3.5 rounded-xl font-black uppercase tracking-widest shadow-lg hover:bg-blue-700 active:scale-[0.98] transition-all">確認借出並記錄</button></div>
+                </form>
+            </div>
+
+            <!-- 分頁2: 簽收歸還 -->
+            <div id="paneReturn" class="action-pane">
+                <div id="returnStatusNotice" class="mb-4 hidden text-center p-3 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs">該筆樣鞋已於 <span id="returnNoteDate"></span> 歸還完畢</div>
+                <form id="retForm" class="space-y-4 text-xs font-semibold">
+                    <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100 mb-2">
+                        <div><p class="text-slate-400 uppercase text-[10px]">原借用人</p><p id="r_display_borrower" class="text-sm font-black text-slate-700"></p></div>
+                        <div><p class="text-slate-400 uppercase text-[10px]">借出日期</p><p id="r_display_date" class="text-sm font-black text-slate-700"></p></div>
+                    </div>
+                    <div class="space-y-1"><label class="text-slate-400">實際歸還日期 (M/D)</label><input type="text" id="r_date" class="w-full border p-3 rounded-xl font-black outline-none focus:ring-2 focus:ring-green-500"></div>
+                    <div class="space-y-1"><label class="text-slate-400">簽收確認人員 (助理)</label><input type="text" id="r_conf" class="w-full border p-3 rounded-xl font-black outline-none focus:ring-2 focus:ring-green-500" value="助理已收"></div>
+                    <button type="submit" id="submitReturnBtn" class="w-full bg-green-600 text-white py-3.5 rounded-xl font-black tracking-widest mt-2 hover:bg-green-700 active:scale-[0.98] transition-all shadow-lg">確認簽收歸還</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 彈窗：匯入 -->
     <div id="importModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
         <div class="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl">
-            <div class="flex justify-between items-center mb-4"><h2 class="font-bold">匯入樣鞋資料</h2><button onclick="closeModal('importModal')"><i data-lucide="x"></i></button></div>
+            <div class="flex justify-between items-center mb-4"><h2 class="font-bold text-slate-800">匯入資料</h2><button onclick="closeModal('importModal')"><i data-lucide="x"></i></button></div>
             <div class="space-y-4 text-sm">
-                <select id="encoding" class="w-full p-2 border rounded">
+                <select id="encoding" class="w-full p-2 border rounded font-bold">
                     <option value="UTF-8">編碼: UTF-8 (預設)</option>
-                    <option value="Big5">編碼: Big5 (繁體 Excel 存檔)</option>
+                    <option value="Big5">編碼: Big5 (繁體 Excel)</option>
                 </select>
                 <div onclick="document.getElementById('fileIn').click()" class="border-2 border-dashed border-slate-200 p-8 text-center rounded-xl cursor-pointer hover:bg-slate-50 transition-all">
-                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest">點擊上傳 CSV</p>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest">點擊選擇 CSV</p>
                     <input type="file" id="fileIn" class="hidden" accept=".csv" onchange="handleImport(event)">
                 </div>
             </div>
         </div>
     </div>
 
-    <div id="addModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
-        <div class="bg-white w-full max-w-lg rounded-xl p-6 shadow-2xl">
-            <div class="flex justify-between items-center mb-4"><h2 class="font-bold">新增借出流水帳</h2><button onclick="closeModal('addModal')"><i data-lucide="x"></i></button></div>
-            <form id="addForm" class="grid grid-cols-2 gap-3 text-xs font-semibold">
-                <div class="col-span-1 space-y-1"><label class="text-slate-400">品牌 Brand</label><input type="text" id="a_brand" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500" required></div>
-                <div class="col-span-1 space-y-1"><label class="text-slate-400">型號 Style #</label><input type="text" id="a_style" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500" required></div>
-                <div class="col-span-1 space-y-1"><label class="text-slate-400">顏色 Colorway</label><input type="text" id="a_color" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500"></div>
-                <div class="col-span-1 space-y-1"><label class="text-slate-400">季節 Season</label><input type="text" id="a_season" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500" value="FA25"></div>
-                <div class="col-span-1 space-y-1"><label class="text-slate-400">借出日期 (M/D)</label><input type="text" id="a_loan" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500"></div>
-                <div class="col-span-1 space-y-1"><label class="text-slate-400">天數 Expected</label><input type="number" id="a_days" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500" value="2"></div>
-                <div class="col-span-1 space-y-1"><label class="text-slate-400">借用人 By</label><input type="text" id="a_borrower" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500" required></div>
-                <div class="col-span-1 space-y-1"><label class="text-slate-400">確認人 Confirmed</label><input type="text" id="a_confirmer" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500"></div>
-                <div class="col-span-2 pt-2"><button type="submit" class="w-full bg-blue-600 text-white py-3 rounded-lg font-black uppercase tracking-widest shadow-lg">確認並記錄</button></div>
-            </form>
-        </div>
-    </div>
-
-    <div id="returnModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
-        <div class="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl">
-            <div class="flex justify-between items-center mb-4"><h2 class="font-bold text-green-700">簽收歸還結案</h2><button onclick="closeModal('returnModal')"><i data-lucide="x"></i></button></div>
-            <div id="retInfo" class="bg-slate-50 p-3 rounded mb-4 text-xs font-bold border border-slate-200"></div>
-            <form id="retForm" class="space-y-3 text-xs font-semibold">
-                <div class="space-y-1"><label class="text-slate-400">實際歸還日期 (M/D)</label><input type="text" id="r_date" class="w-full border p-2 rounded font-bold outline-none focus:ring-1 focus:ring-green-500"></div>
-                <div class="space-y-1"><label class="text-slate-400">簽收確認人員</label><input type="text" id="r_conf" class="w-full border p-2 rounded font-bold outline-none focus:ring-1 focus:ring-green-500" value="助理已收"></div>
-                <button type="submit" class="w-full bg-green-600 text-white py-3 rounded-lg font-black tracking-widest mt-2">確認收回</button>
-            </form>
-        </div>
-    </div>
-
+    <!-- 刪除確認 -->
     <div id="deleteModal" class="modal fixed inset-0 bg-black/70 z-50 items-center justify-center p-4">
         <div class="bg-white w-full max-w-xs rounded-2xl p-6 shadow-2xl text-center">
             <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4"><i data-lucide="alert-triangle" class="w-8 h-8"></i></div>
             <h2 class="font-bold text-lg text-slate-800 mb-1">確定要刪除嗎？</h2>
-            <p class="text-[11px] text-slate-400 mb-6 font-medium">此流水帳記錄刪除後將無法恢復。</p>
+            <p class="text-[11px] text-slate-400 mb-6">此記錄刪除後將無法恢復。</p>
             <div class="flex gap-3">
                 <button onclick="closeModal('deleteModal')" class="flex-1 py-2 bg-slate-100 text-slate-500 rounded-lg font-bold text-xs hover:bg-slate-200">取消</button>
                 <button id="confirmDeleteBtn" class="flex-1 py-2 bg-red-600 text-white rounded-lg font-bold text-xs hover:bg-red-700 shadow-md">確定刪除</button>
@@ -210,9 +213,8 @@
     <script>
         let dataStore = { confirm: [], fitting: [] };
         let currentMode = 'confirm';
-        let currentId = null;
+        let currentRecord = null; // 當前操作的完整記錄對象
         let filters = {};
-        let rightClickedRecord = null; // 暫存右鍵點擊的資料
 
         window.onload = () => {
             const saved = localStorage.getItem('sampleRoomLedger');
@@ -236,49 +238,65 @@
             renderTable();
         }
 
-        // --- 右鍵選單邏輯 ---
-        function showContextMenu(e, id) {
-            e.preventDefault();
-            rightClickedRecord = dataStore[currentMode].find(x => x.id === id);
-            const menu = document.getElementById('contextMenu');
-            menu.style.display = 'block';
-            menu.style.left = e.pageX + 'px';
-            menu.style.top = e.pageY + 'px';
-        }
-
-        function hideContextMenu() {
-            document.getElementById('contextMenu').style.display = 'none';
-        }
-
-        function handleQuickCopy() {
-            if (!rightClickedRecord) return;
-            openAddModal(rightClickedRecord);
-            hideContextMenu();
+        // 切換操作分頁 (借出/歸還)
+        function switchActionTab(tab) {
+            document.getElementById('tabLoan').classList.toggle('active', tab === 'loan');
+            document.getElementById('tabReturn').classList.toggle('active', tab === 'return');
+            document.getElementById('paneLoan').classList.toggle('active', tab === 'loan');
+            document.getElementById('paneReturn').classList.toggle('active', tab === 'return');
         }
 
         function openModal(id) { document.getElementById(id).classList.add('active'); }
         function closeModal(id) { document.getElementById(id).classList.remove('active'); }
         function getMD() { const d = new Date(); return `${d.getMonth() + 1}/${d.getDate()}`; }
 
-        function openAddModal(prefill = null) {
+        // 操作中心彈窗 (新增/再次借出 + 歸還)
+        function openActionModal(record = null) {
+            currentRecord = record;
             const max = dataStore[currentMode].reduce((m, r) => Math.max(m, parseInt(r.stt) || 0), 0);
             
-            // 如果有帶入資料(右鍵複刻)，自動填入
-            if (prefill) {
-                document.getElementById('a_brand').value = prefill.brand;
-                document.getElementById('a_style').value = prefill.style;
-                document.getElementById('a_color').value = prefill.color;
-                document.getElementById('a_season').value = prefill.season;
-                document.getElementById('a_borrower').value = ''; // 借用人清空
-                document.getElementById('a_confirmer').value = ''; // 確認人清空
+            // 更新頂部型體資訊顯示
+            document.getElementById('displayBrand').innerText = record ? record.brand : '-';
+            document.getElementById('displayStyle').innerText = record ? record.style : 'New Entry';
+            document.getElementById('displaySeason').innerText = record ? record.season : '';
+
+            // --- 準備：再次借出 分頁 ---
+            if (record) {
+                document.getElementById('a_brand').value = record.brand;
+                document.getElementById('a_style').value = record.style;
+                document.getElementById('a_color').value = record.color;
+                document.getElementById('a_season').value = record.season;
+                document.getElementById('a_borrower').value = ''; 
+                document.getElementById('a_confirmer').value = '';
             } else {
                 document.getElementById('addForm').reset();
                 document.getElementById('a_season').value = 'FA25';
             }
-
             document.getElementById('a_loan').value = getMD();
             document.getElementById('a_days').value = 2;
 
+            // --- 準備：歸還 分頁 ---
+            if (record) {
+                document.getElementById('r_display_borrower').innerText = record.borrower;
+                document.getElementById('r_display_date').innerText = record.loanDate;
+                document.getElementById('r_date').value = getMD();
+                document.getElementById('r_conf').value = '助理已收';
+                
+                // 如果已經歸還了，顯示提示
+                const isReturned = record.returnDate && record.returnDate.trim() !== '';
+                document.getElementById('returnStatusNotice').classList.toggle('hidden', !isReturned);
+                if (isReturned) document.getElementById('returnNoteDate').innerText = record.returnDate;
+                document.getElementById('submitReturnBtn').classList.toggle('hidden', isReturned);
+                
+                // 智慧分頁導向：外借中選還，已還選借
+                switchActionTab(isReturned ? 'loan' : 'return');
+            } else {
+                switchActionTab('loan');
+                document.getElementById('tabReturn').style.opacity = '0.3';
+                document.getElementById('tabReturn').style.pointerEvents = 'none';
+            }
+
+            // 綁定儲存事件
             document.getElementById('addForm').onsubmit = (e) => {
                 e.preventDefault();
                 dataStore[currentMode].unshift({
@@ -293,30 +311,26 @@
                     confirmerLoan: document.getElementById('a_confirmer').value,
                     returnDate: '', returnedBy: '', confirmerReturn: ''
                 });
-                save(); renderTable(); closeModal('addModal');
+                save(); renderTable(); closeModal('actionModal');
             };
-            openModal('addModal');
-        }
 
-        function openRet(id) {
-            const r = dataStore[currentMode].find(x => x.id === id);
-            currentId = id;
-            document.getElementById('retInfo').innerText = `${r.style} (${r.brand}) - 借用人: ${r.borrower}`;
-            document.getElementById('r_date').value = getMD();
             document.getElementById('retForm').onsubmit = (e) => {
                 e.preventDefault();
+                if (!currentRecord) return;
+                const r = dataStore[currentMode].find(x => x.id === currentRecord.id);
                 r.returnDate = document.getElementById('r_date').value;
                 r.returnedBy = r.borrower;
                 r.confirmerReturn = document.getElementById('r_conf').value;
-                save(); renderTable(); closeModal('returnModal');
+                save(); renderTable(); closeModal('actionModal');
             };
-            openModal('returnModal');
+
+            openModal('actionModal');
         }
 
         function openDel(id) {
-            currentId = id;
+            currentRecord = dataStore[currentMode].find(x => x.id === id);
             document.getElementById('confirmDeleteBtn').onclick = () => {
-                dataStore[currentMode] = dataStore[currentMode].filter(x => x.id !== currentId);
+                dataStore[currentMode] = dataStore[currentMode].filter(x => x.id !== currentRecord.id);
                 save(); renderTable(); closeModal('deleteModal');
             };
             openModal('deleteModal');
@@ -364,18 +378,18 @@
             });
 
             list.forEach(r => {
-                const isLent = !r.returnDate;
+                const isLent = !r.returnDate || r.returnDate.trim() === '';
                 const overdue = isLent && isOverdue(r.loanDate, r.expected);
                 if (isLent) lentCount++;
                 if (overdue) overdueCount++;
 
                 const tr = document.createElement('tr');
-                if (overdue) tr.className = 'overdue-row cursor-context-menu';
-                else if (isLent) tr.className = 'lent-row cursor-context-menu';
-                else tr.className = 'cursor-context-menu';
+                tr.className = "cursor-pointer transition-all hover:bg-slate-50";
+                if (overdue) tr.classList.add('overdue-row');
+                else if (isLent) tr.classList.add('lent-row');
 
-                // 綁定右鍵事件
-                tr.oncontextmenu = (e) => showContextMenu(e, r.id);
+                // 核心：雙擊開啟操作中心
+                tr.ondblclick = () => openActionModal(r);
 
                 tr.innerHTML = `
                     <td class="p-2 text-slate-400 font-mono">${r.stt}</td>
@@ -395,8 +409,8 @@
                     </td>
                     <td class="p-2 text-center">
                         <div class="flex justify-center gap-2">
-                            ${isLent ? `<button onclick="openRet(${r.id})" class="text-green-600 hover:scale-125 transition-all"><i data-lucide="check-square" class="w-4 h-4"></i></button>` : '<i data-lucide="check-circle" class="w-4 h-4 text-slate-200"></i>'}
-                            <button onclick="openDel(${r.id})" class="text-slate-300 hover:text-red-500 transition-all ml-1"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            <button onclick="event.stopPropagation(); openActionModal(JSON.parse('${JSON.stringify(r).replace(/'/g, "\\'")}'))" class="text-slate-400 hover:text-blue-600 transition-all"><i data-lucide="more-horizontal" class="w-5 h-5"></i></button>
+                            <button onclick="event.stopPropagation(); openDel(${r.id})" class="text-slate-200 hover:text-red-500 transition-all"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                         </div>
                     </td>
                 `;
