@@ -18,12 +18,12 @@
         }
         
         /* 表格固定寬度與捲軸優化 */
-        .table-wrapper { height: calc(100vh - 250px); overflow: auto; border-radius: 8px; border: 1px solid #e2e8f0; }
-        table { border-collapse: separate; border-spacing: 0; min-width: 1300px; }
+        .table-wrapper { height: calc(100vh - 220px); overflow: auto; border-radius: 8px; border: 1px solid #e2e8f0; }
+        table { border-collapse: separate; border-spacing: 0; min-width: 1350px; }
         thead th { position: sticky; top: 0; background: #f8fafc; z-index: 10; border-bottom: 2px solid #e2e8f0; }
         .filter-row th { position: sticky; top: 37px; background: #f8fafc; z-index: 9; border-bottom: 1px solid #e2e8f0; }
         
-        /* 限制欄位寬度防止過寬 */
+        /* 欄位寬度設定 */
         .col-stt { width: 50px; }
         .col-status { width: 80px; }
         .col-brand { width: 100px; }
@@ -33,7 +33,7 @@
         .col-date { width: 85px; }
         .col-days { width: 50px; }
         .col-person { width: 120px; }
-        .col-action { width: 60px; }
+        .col-action { width: 100px; }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-800 p-2">
@@ -42,10 +42,10 @@
         <!-- 頂部切換與統計 -->
         <div class="flex flex-col md:flex-row justify-between items-end gap-2 mb-2">
             <div class="flex gap-2">
-                <button id="tabConfirm" onclick="switchMode('confirm')" class="px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-blue-600 text-blue-600">確認鞋 (Confirm)</button>
-                <button id="tabFitting" onclick="switchMode('fitting')" class="px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500">FITTING鞋 (Fitting)</button>
+                <button id="tabConfirm" onclick="switchMode('confirm')" class="px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-blue-600 text-blue-600 transition-all">確認鞋 (Confirm)</button>
+                <button id="tabFitting" onclick="switchMode('fitting')" class="px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500 transition-all">FITTING鞋 (Fitting)</button>
             </div>
-            <div id="statPanel" class="flex gap-4 text-[11px] font-bold bg-white px-4 py-2 rounded-lg border shadow-sm mb-1">
+            <div id="statPanel" class="flex gap-4 text-[10px] font-bold bg-white px-4 py-1.5 rounded-lg border shadow-sm mb-1">
                 <span class="text-slate-500">總數: <span id="statTotal">0</span></span>
                 <span class="text-orange-600">外借中: <span id="statLent">0</span></span>
                 <span class="text-red-600">逾期: <span id="statOverdue">0</span></span>
@@ -53,21 +53,21 @@
         </div>
 
         <!-- 功能列 -->
-        <div class="bg-white p-4 rounded-xl shadow-sm border mb-4 flex justify-between items-center">
+        <div class="bg-white p-3 rounded-xl shadow-sm border mb-4 flex justify-between items-center">
             <div class="flex items-center gap-4">
-                <h1 id="titleDisplay" class="text-lg font-black flex items-center gap-2 text-slate-700 uppercase">
+                <h1 id="titleDisplay" class="text-base font-black flex items-center gap-2 text-slate-700 uppercase">
                     <i data-lucide="layout-list"></i> 確認鞋管理
                 </h1>
             </div>
-            <div class="flex gap-2">
-                <button onclick="exportToCSV()" class="flex items-center gap-1 bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-700">
-                    <i data-lucide="download" class="w-3.5 h-3.5"></i> 匯出報表
-                </button>
-                <button onclick="openModal('importModal')" class="flex items-center gap-1 bg-slate-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-slate-700">
-                    <i data-lucide="upload" class="w-3.5 h-3.5"></i> 匯入 CSV
-                </button>
-                <button onclick="openAddModal()" class="flex items-center gap-1 bg-blue-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-700 shadow-md">
-                    <i data-lucide="plus" class="w-3.5 h-3.5"></i> 新增借出
+            <div class="flex items-center gap-4">
+                <!-- 匯入匯出按鈕縮小並移除圖示 -->
+                <div class="flex gap-3 border-r pr-4 border-slate-200">
+                    <button onclick="exportToCSV()" class="text-[11px] font-bold text-slate-400 hover:text-emerald-600 transition-colors uppercase tracking-tight">匯出報表</button>
+                    <button onclick="openModal('importModal')" class="text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-tight">匯入資料</button>
+                </div>
+                <!-- 保持主要的「新增借出」明顯 -->
+                <button onclick="openAddModal()" class="flex items-center gap-1.5 bg-blue-600 text-white px-5 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 shadow-md transition-all active:scale-95">
+                    <i data-lucide="plus" class="w-4 h-4"></i> 新增借出
                 </button>
             </div>
         </div>
@@ -88,7 +88,7 @@
                         <th class="p-2 col-person">借用人</th>
                         <th class="p-2 col-date">歸還日期</th>
                         <th class="p-2 col-person">簽收狀態</th>
-                        <th class="p-2 col-action text-center">簽收</th>
+                        <th class="p-2 col-action text-center">操作</th>
                     </tr>
                     <tr class="filter-row">
                         <th class="p-1"><input type="text" class="filter-input" oninput="applyFilter(0, this.value)" placeholder="No."></th>
@@ -113,92 +113,102 @@
                     </tr>
                 </thead>
                 <tbody id="ledgerBody" class="text-[11px] font-medium divide-y divide-slate-100">
-                    <!-- 資料渲染 -->
+                    <!-- JS Render -->
                 </tbody>
             </table>
-            <!-- 補回遺失的 emptyState 元素 -->
             <div id="emptyState" class="p-10 text-center text-slate-300 italic text-xs hidden">目前此類別帳本尚無資料</div>
         </div>
     </div>
 
-    <!-- 彈窗系統 -->
-    <!-- 匯入 CSV -->
+    <!-- 彈窗：匯入 -->
     <div id="importModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
         <div class="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="font-bold">匯入樣鞋資料</h2>
-                <button onclick="closeModal('importModal')"><i data-lucide="x"></i></button>
-            </div>
-            <div class="space-y-4">
-                <select id="encoding" class="w-full p-2 border rounded text-sm">
+            <div class="flex justify-between items-center mb-4"><h2 class="font-bold">匯入樣鞋資料</h2><button onclick="closeModal('importModal')"><i data-lucide="x"></i></button></div>
+            <div class="space-y-4 text-sm">
+                <select id="encoding" class="w-full p-2 border rounded">
                     <option value="UTF-8">編碼: UTF-8 (預設)</option>
-                    <option value="Big5">編碼: Big5 (Excel 繁體)</option>
+                    <option value="Big5">編碼: Big5 (繁體 Excel 存檔)</option>
                 </select>
-                <div onclick="document.getElementById('fileIn').click()" class="border-2 border-dashed border-slate-200 p-8 text-center rounded-xl cursor-pointer hover:bg-slate-50">
-                    <i data-lucide="file-up" class="mx-auto mb-2 text-slate-400"></i>
-                    <p class="text-xs font-bold text-slate-500">點擊上傳 CSV 檔案</p>
+                <div onclick="document.getElementById('fileIn').click()" class="border-2 border-dashed border-slate-200 p-8 text-center rounded-xl cursor-pointer hover:bg-slate-50 transition-all">
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest">點擊上傳 CSV</p>
                     <input type="file" id="fileIn" class="hidden" accept=".csv" onchange="handleImport(event)">
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 新增借出 -->
+    <!-- 彈窗：新增 -->
     <div id="addModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
         <div class="bg-white w-full max-w-lg rounded-xl p-6 shadow-2xl">
-            <div class="flex justify-between items-center mb-4"><h2 class="font-bold">新增樣鞋借出</h2><button onclick="closeModal('addModal')"><i data-lucide="x"></i></button></div>
-            <form id="addForm" class="grid grid-cols-2 gap-3 text-xs">
-                <div class="col-span-1 space-y-1"><label class="font-bold text-slate-400">品牌 Brand</label><input type="text" id="a_brand" class="w-full border p-2 rounded" required></div>
-                <div class="col-span-1 space-y-1"><label class="font-bold text-slate-400">型號 Style #</label><input type="text" id="a_style" class="w-full border p-2 rounded" required></div>
-                <div class="col-span-1 space-y-1"><label class="font-bold text-slate-400">顏色 Colorway</label><input type="text" id="a_color" class="w-full border p-2 rounded"></div>
-                <div class="col-span-1 space-y-1"><label class="font-bold text-slate-400">季節 Season</label><input type="text" id="a_season" class="w-full border p-2 rounded" value="FA25"></div>
-                <div class="col-span-1 space-y-1"><label class="font-bold text-slate-400">借出日期 (M/D)</label><input type="text" id="a_loan" class="w-full border p-2 rounded"></div>
-                <div class="col-span-1 space-y-1"><label class="font-bold text-slate-400">天數 Expected</label><input type="number" id="a_days" class="w-full border p-2 rounded" value="2"></div>
-                <div class="col-span-1 space-y-1"><label class="font-bold text-slate-400">借用人 By</label><input type="text" id="a_borrower" class="w-full border p-2 rounded" required></div>
-                <div class="col-span-1 space-y-1"><label class="font-bold text-slate-400">確認人 Confirmed</label><input type="text" id="a_confirmer" class="w-full border p-2 rounded"></div>
-                <div class="col-span-2 pt-2"><button type="submit" class="w-full bg-blue-600 text-white py-3 rounded-lg font-bold">確認借出並存檔</button></div>
+            <div class="flex justify-between items-center mb-4"><h2 class="font-bold">新增借出流水帳</h2><button onclick="closeModal('addModal')"><i data-lucide="x"></i></button></div>
+            <form id="addForm" class="grid grid-cols-2 gap-3 text-xs font-semibold">
+                <div class="col-span-1 space-y-1"><label class="text-slate-400">品牌 Brand</label><input type="text" id="a_brand" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500" required></div>
+                <div class="col-span-1 space-y-1"><label class="text-slate-400">型號 Style #</label><input type="text" id="a_style" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500" required></div>
+                <div class="col-span-1 space-y-1"><label class="text-slate-400">顏色 Colorway</label><input type="text" id="a_color" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500"></div>
+                <div class="col-span-1 space-y-1"><label class="text-slate-400">季節 Season</label><input type="text" id="a_season" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500" value="FA25"></div>
+                <div class="col-span-1 space-y-1"><label class="text-slate-400">借出日期 (M/D)</label><input type="text" id="a_loan" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500"></div>
+                <div class="col-span-1 space-y-1"><label class="text-slate-400">天數 Expected</label><input type="number" id="a_days" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500" value="2"></div>
+                <div class="col-span-1 space-y-1"><label class="text-slate-400">借用人 By</label><input type="text" id="a_borrower" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500" required></div>
+                <div class="col-span-1 space-y-1"><label class="text-slate-400">確認人 Confirmed</label><input type="text" id="a_confirmer" class="w-full border p-2 rounded outline-none focus:ring-1 focus:ring-blue-500"></div>
+                <div class="col-span-2 pt-2"><button type="submit" class="w-full bg-blue-600 text-white py-3 rounded-lg font-black uppercase tracking-widest shadow-lg">確認並記錄</button></div>
             </form>
         </div>
     </div>
 
-    <!-- 歸還簽收 -->
+    <!-- 彈窗：歸還 -->
     <div id="returnModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
         <div class="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl">
             <div class="flex justify-between items-center mb-4"><h2 class="font-bold text-green-700">簽收歸還結案</h2><button onclick="closeModal('returnModal')"><i data-lucide="x"></i></button></div>
-            <div id="retInfo" class="bg-slate-50 p-3 rounded mb-4 text-xs font-bold border"></div>
-            <form id="retForm" class="space-y-3 text-xs">
-                <div class="space-y-1"><label class="font-bold text-slate-400">實際歸還日期 (M/D)</label><input type="text" id="r_date" class="w-full border p-2 rounded font-bold"></div>
-                <div class="space-y-1"><label class="font-bold text-slate-400">簽收確認人員</label><input type="text" id="r_conf" class="w-full border p-2 rounded font-bold" value="助理已收"></div>
-                <button type="submit" class="w-full bg-green-600 text-white py-3 rounded-lg font-bold mt-2">確認收回結案</button>
+            <div id="retInfo" class="bg-slate-50 p-3 rounded mb-4 text-xs font-bold border border-slate-200"></div>
+            <form id="retForm" class="space-y-3 text-xs font-semibold">
+                <div class="space-y-1"><label class="text-slate-400">實際歸還日期 (M/D)</label><input type="text" id="r_date" class="w-full border p-2 rounded font-bold outline-none focus:ring-1 focus:ring-green-500"></div>
+                <div class="space-y-1"><label class="text-slate-400">簽收確認人員</label><input type="text" id="r_conf" class="w-full border p-2 rounded font-bold outline-none focus:ring-1 focus:ring-green-500" value="助理已收"></div>
+                <button type="submit" class="w-full bg-green-600 text-white py-3 rounded-lg font-black tracking-widest mt-2">確認收回</button>
             </form>
+        </div>
+    </div>
+
+    <!-- 彈窗：刪除確認 -->
+    <div id="deleteModal" class="modal fixed inset-0 bg-black/70 z-50 items-center justify-center p-4">
+        <div class="bg-white w-full max-w-xs rounded-2xl p-6 shadow-2xl text-center">
+            <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4"><i data-lucide="alert-triangle" class="w-8 h-8"></i></div>
+            <h2 class="font-bold text-lg text-slate-800 mb-1">確定要刪除嗎？</h2>
+            <p class="text-[11px] text-slate-400 mb-6 font-medium">此流水帳記錄刪除後將無法恢復。</p>
+            <div class="flex gap-3">
+                <button onclick="closeModal('deleteModal')" class="flex-1 py-2 bg-slate-100 text-slate-500 rounded-lg font-bold text-xs hover:bg-slate-200">取消</button>
+                <button id="confirmDeleteBtn" class="flex-1 py-2 bg-red-600 text-white rounded-lg font-bold text-xs hover:bg-red-700 shadow-md">確定刪除</button>
+            </div>
         </div>
     </div>
 
     <script>
-        // 資料結構：與 CSV 12 個欄位完全對齊
         let dataStore = { confirm: [], fitting: [] };
         let currentMode = 'confirm';
         let currentId = null;
         let filters = {};
 
-        // 初始化
         window.onload = () => {
             const saved = localStorage.getItem('sampleRoomLedger');
-            if (saved) dataStore = JSON.parse(saved);
+            if (saved) { try { dataStore = JSON.parse(saved); } catch(e) { console.error("Data error", e); } }
             switchMode('confirm');
             lucide.createIcons();
         };
 
         function switchMode(mode) {
             currentMode = mode;
-            const tabConfirm = document.getElementById('tabConfirm');
-            const tabFitting = document.getElementById('tabFitting');
-            const titleDisplay = document.getElementById('titleDisplay');
+            const tabC = document.getElementById('tabConfirm');
+            const tabF = document.getElementById('tabFitting');
+            const title = document.getElementById('titleDisplay');
             
-            if (tabConfirm) tabConfirm.className = (mode === 'confirm') ? 'px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-blue-600 text-blue-600' : 'px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500';
-            if (tabFitting) tabFitting.className = (mode === 'fitting') ? 'px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-orange-600 text-orange-600' : 'px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500';
-            if (titleDisplay) titleDisplay.innerText = (mode === 'confirm') ? '確認鞋管理 (Confirm)' : 'FITTING鞋管理 (Fitting)';
+            tabC.className = (mode === 'confirm') ? 'px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-blue-600 text-blue-600' : 'px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500';
+            tabF.className = (mode === 'fitting') ? 'px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-orange-600 text-orange-600' : 'px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500';
             
+            if (title) {
+                const icon = (mode === 'confirm') ? 'layout-list' : 'zap';
+                const color = (mode === 'confirm') ? 'text-blue-600' : 'text-orange-500';
+                title.innerHTML = `<i data-lucide="${icon}" class="${color} w-5 h-5"></i> ${mode === 'confirm' ? '確認鞋管理 (Confirm)' : 'FITTING鞋管理 (Fitting)'}`;
+                lucide.createIcons();
+            }
             filters = {};
             document.querySelectorAll('.filter-input, .filter-select').forEach(i => i.value = '');
             renderTable();
@@ -206,24 +216,15 @@
 
         function openModal(id) { document.getElementById(id).classList.add('active'); }
         function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+        function getMD() { const d = new Date(); return `${d.getMonth() + 1}/${d.getDate()}`; }
 
-        // M/D 格式日期
-        function getMD() {
-            const d = new Date();
-            return `${d.getMonth() + 1}/${d.getDate()}`;
-        }
-
-        // 新增
         function openAddModal() {
             const max = dataStore[currentMode].reduce((m, r) => Math.max(m, parseInt(r.stt) || 0), 0);
-            const a_loan = document.getElementById('a_loan');
-            if (a_loan) a_loan.value = getMD();
-            
+            document.getElementById('a_loan').value = getMD();
             document.getElementById('addForm').onsubmit = (e) => {
                 e.preventDefault();
-                const entry = {
-                    id: Date.now(),
-                    stt: max + 1,
+                dataStore[currentMode].unshift({
+                    id: Date.now(), stt: max + 1,
                     brand: document.getElementById('a_brand').value,
                     style: document.getElementById('a_style').value,
                     color: document.getElementById('a_color').value,
@@ -233,23 +234,18 @@
                     borrower: document.getElementById('a_borrower').value,
                     confirmerLoan: document.getElementById('a_confirmer').value,
                     returnDate: '', returnedBy: '', confirmerReturn: ''
-                };
-                dataStore[currentMode].unshift(entry);
+                });
                 save(); renderTable(); closeModal('addModal');
                 document.getElementById('addForm').reset();
             };
             openModal('addModal');
         }
 
-        // 歸還
         function openRet(id) {
             const r = dataStore[currentMode].find(x => x.id === id);
             currentId = id;
-            const retInfo = document.getElementById('retInfo');
-            const r_date = document.getElementById('r_date');
-            if (retInfo) retInfo.innerText = `${r.style} (${r.brand}) - 借用人: ${r.borrower}`;
-            if (r_date) r_date.value = getMD();
-            
+            document.getElementById('retInfo').innerText = `${r.style} (${r.brand}) - 借用人: ${r.borrower}`;
+            document.getElementById('r_date').value = getMD();
             document.getElementById('retForm').onsubmit = (e) => {
                 e.preventDefault();
                 r.returnDate = document.getElementById('r_date').value;
@@ -260,49 +256,43 @@
             openModal('returnModal');
         }
 
-        // 儲存
-        function save() {
-            localStorage.setItem('sampleRoomLedger', JSON.stringify(dataStore));
+        function openDel(id) {
+            currentId = id;
+            document.getElementById('confirmDeleteBtn').onclick = () => {
+                dataStore[currentMode] = dataStore[currentMode].filter(x => x.id !== currentId);
+                save(); renderTable(); closeModal('deleteModal');
+            };
+            openModal('deleteModal');
         }
 
-        // 篩選
-        function applyFilter(idx, val) {
-            filters[idx] = val.toLowerCase();
-            renderTable();
-        }
+        function save() { localStorage.setItem('sampleRoomLedger', JSON.stringify(dataStore)); }
+        function applyFilter(idx, val) { filters[idx] = val.toLowerCase(); renderTable(); }
 
-        // 更新下拉選單
         function updateSelects() {
             const items = dataStore[currentMode];
-            const brands = [...new Set(items.map(i => i.brand))].filter(Boolean).sort();
-            const seasons = [...new Set(items.map(i => i.season))].filter(Boolean).sort();
-            const users = [...new Set(items.map(i => i.borrower))].filter(Boolean).sort();
-
             const fill = (id, list) => {
-                const s = document.getElementById(id);
-                if (!s) return;
+                const s = document.getElementById(id); if (!s) return;
                 const cur = s.value;
                 s.innerHTML = '<option value="">全部</option>';
-                list.forEach(v => s.innerHTML += `<option value="${v}">${v}</option>`);
+                [...new Set(list)].filter(Boolean).sort().forEach(v => s.innerHTML += `<option value="${v}">${v}</option>`);
                 s.value = cur;
             };
-            fill('f_brand', brands); fill('f_season', seasons); fill('f_borrower', users);
+            fill('f_brand', items.map(i => i.brand)); 
+            fill('f_season', items.map(i => i.season)); 
+            fill('f_borrower', items.map(i => i.borrower));
         }
 
-        // 判斷逾期 (簡單判斷)
         function isOverdue(loanDate, days) {
             if (!loanDate || !days) return false;
             try {
                 const today = new Date();
                 const [m, d] = loanDate.split('/').map(Number);
                 const loan = new Date(today.getFullYear(), m - 1, d);
-                const limit = new Date(loan);
-                limit.setDate(loan.getDate() + parseInt(days));
-                return today > limit;
+                loan.setDate(loan.getDate() + parseInt(days));
+                return today > loan;
             } catch(e) { return false; }
         }
 
-        // 渲染表格
         function renderTable() {
             const body = document.getElementById('ledgerBody');
             if (!body) return;
@@ -310,7 +300,6 @@
             updateSelects();
 
             let lentCount = 0, overdueCount = 0;
-
             const list = dataStore[currentMode].filter(r => {
                 const statusStr = (!r.returnDate) ? (isOverdue(r.loanDate, r.expected) ? '逾期' : '外借中') : '已結案';
                 const row = [r.stt, statusStr, r.brand, r.style, r.color, r.season, r.loanDate, r.expected, r.borrower, r.returnDate, (r.returnedBy + r.confirmerReturn)];
@@ -334,36 +323,32 @@
                     </td>
                     <td class="p-2 font-bold">${r.brand}</td>
                     <td class="p-2 font-mono text-blue-600 font-bold">${r.style}</td>
-                    <td class="p-2">${r.color}</td>
-                    <td class="p-2 text-slate-500">${r.season}</td>
+                    <td class="p-2 text-slate-500">${r.color}</td>
+                    <td class="p-2 text-slate-400">${r.season}</td>
                     <td class="p-2 text-slate-400">${r.loanDate}</td>
                     <td class="p-2 text-center text-slate-300 font-bold">${r.expected}</td>
                     <td class="p-2 font-bold text-slate-700">${r.borrower}</td>
                     <td class="p-2 text-green-600 font-black">${r.returnDate || '--'}</td>
-                    <td class="p-2 text-[10px] text-slate-500">
-                        ${r.returnDate ? `<div>${r.returnedBy}<br><span class="opacity-50">簽: ${r.confirmerReturn}</span></div>` : '<span class="text-slate-200">待收回</span>'}
+                    <td class="p-2 text-[10px] text-slate-400">
+                        ${r.returnDate ? `<div>${r.returnedBy}<br><span class="opacity-50">簽: ${r.confirmerReturn}</span></div>` : '待收'}
                     </td>
                     <td class="p-2 text-center">
-                        ${isLent ? `<button onclick="openRet(${r.id})" class="text-green-600 hover:scale-125 transition-transform"><i data-lucide="check-square" class="w-5 h-5"></i></button>` : '<i data-lucide="check-circle" class="w-4 h-4 text-slate-200 mx-auto"></i>'}
+                        <div class="flex justify-center gap-2">
+                            ${isLent ? `<button onclick="openRet(${r.id})" class="text-green-600 hover:scale-125 transition-all"><i data-lucide="check-square" class="w-4 h-4"></i></button>` : '<i data-lucide="check-circle" class="w-4 h-4 text-slate-200"></i>'}
+                            <button onclick="openDel(${r.id})" class="text-slate-300 hover:text-red-500 transition-all ml-1"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </div>
                     </td>
                 `;
                 body.appendChild(tr);
             });
 
-            const statTotalEl = document.getElementById('statTotal');
-            const statLentEl = document.getElementById('statLent');
-            const statOverdueEl = document.getElementById('statOverdue');
-            const emptyStateEl = document.getElementById('emptyState');
-
-            if (statTotalEl) statTotalEl.innerText = dataStore[currentMode].length;
-            if (statLentEl) statLentEl.innerText = lentCount;
-            if (statOverdueEl) statOverdueEl.innerText = overdueCount;
-            if (emptyStateEl) emptyStateEl.className = (list.length === 0) ? 'p-10 text-center text-slate-300 italic text-xs' : 'hidden';
-            
+            document.getElementById('statTotal').innerText = dataStore[currentMode].length;
+            document.getElementById('statLent').innerText = lentCount;
+            document.getElementById('statOverdue').innerText = overdueCount;
+            document.getElementById('emptyState').className = (list.length === 0) ? 'p-10 text-center text-slate-300 italic text-xs' : 'hidden';
             lucide.createIcons();
         }
 
-        // 匯入 CSV
         function handleImport(e) {
             const file = e.target.files[0];
             const enc = document.getElementById('encoding').value;
@@ -385,7 +370,6 @@
             reader.readAsText(file, enc);
         }
 
-        // 匯出符合客人格式的 CSV
         function exportToCSV() {
             const headers = "STT(No.),Brand(Thương hiệu),Style #/Name(Tên hình thức),Colorway(Màu sắc),Season(Mùa),Loan-out Date(Ngày mượn),Expected Date(Dự kiến trả),Borrowed by(Người mượn),Confirmed by(Ký tên),Return Date(Ngày trả),Returned by(Người trả),Confirmed by(Ký tên)";
             const rows = dataStore[currentMode].map(r => 
