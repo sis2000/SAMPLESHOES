@@ -12,7 +12,7 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- Firebase 設定區 ---
+        // --- Firebase 核心設定 ---
         const myFirebaseConfig = {
             apiKey: "AIzaSyBEZPT-gedfUMnwSiSuVY4aXuNNqWHxilA",
             authDomain: "shoe-factory-ledger.firebaseapp.com",
@@ -22,22 +22,15 @@
             appId: "1:380748962069:web:bb37fe839b5cdf3c86b11c"
         };
 
-        // 環境判斷：優先使用 Canvas 提供的動態配置，若無則使用手動填寫的金鑰
-        let firebaseConfig;
-        if (typeof __firebase_config !== 'undefined' && __firebase_config !== null && __firebase_config !== "") {
-            firebaseConfig = JSON.parse(__firebase_config);
-        } else {
-            firebaseConfig = myFirebaseConfig;
-        }
-
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'shoe-factory-manager-ledger';
+        // 環境判斷：優先使用動態配置以確保在預覽環境與 GitHub 都能運行
+        const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config !== "") ? JSON.parse(__firebase_config) : myFirebaseConfig;
+        const appId = (typeof __app_id !== 'undefined' && __app_id !== "") ? __app_id : 'shoe-factory-manager-ledger';
         
-        // 初始化 Firebase
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // 全域狀態管理
+        // 全域狀態
         window.dataStore = { confirm: [], fitting: [] };
         window.currentMode = 'confirm';
         window.isAuthReady = false;
@@ -45,42 +38,56 @@
         let currentRecord = null;
         let isSyncing = false;
 
-        // --- 核心：認證程序 (符合 Rule 3) ---
+        // --- 核心：認證程序 (符合 Rule 3 - 必須先 Auth 才能 Query) ---
         async function initApp() {
             const syncText = document.getElementById('syncText');
+            const errorLog = document.getElementById('errorLog');
+
             try {
-                // 如果環境有提供 Token，優先使用 (修正 Canvas 權限報錯)
+                // 1. 認證處理：支援自定義 Token 與 匿名登入
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
                     await signInAnonymously(auth);
                 }
 
-                // 監聽認證狀態變更
+                // 2. 監聽認證狀態：確認身份後才啟動監聽器
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
+                        console.log("連線成功:", user.uid);
                         window.isAuthReady = true;
                         if (!isSyncing) {
                             startSyncing();
                             isSyncing = true;
                         }
+                    } else {
+                        window.isAuthReady = false;
                     }
                 });
             } catch (err) {
                 console.error("Auth Error:", err);
-                if (syncText) syncText.innerText = "連線失敗：" + (err.code || "金鑰無效");
+                syncText.innerText = "認證失敗";
+                showError(`[認證錯誤] ${err.code}\n請檢查 Firebase Authentication 是否已啟用「匿名登入」。`);
             }
         }
 
-        // --- 資料同步監聽 (符合 Rule 1) ---
+        function showError(msg) {
+            const el = document.getElementById('errorLog');
+            if (el) {
+                el.innerText = msg;
+                el.classList.remove('hidden');
+            }
+        }
+
+        // --- 資料同步 (符合 Rule 1 - 嚴格路徑結構) ---
         function startSyncing() {
             const syncIndicator = document.getElementById('syncIndicator');
             const syncText = document.getElementById('syncText');
-            
-            // 嚴格遵守 Rule 1 路徑結構
+
+            // 路徑：/artifacts/{appId}/public/data/{collectionName}
             const getColl = (mode) => collection(db, 'artifacts', appId, 'public', 'data', `${mode}_ledger`);
 
-            const handleSnapshot = (mode, snapshot) => {
+            const handleUpdate = (mode, snapshot) => {
                 window.dataStore[mode] = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
                 if (syncIndicator) {
                     syncIndicator.className = "flex items-center gap-1.5 text-emerald-500 font-bold";
@@ -91,11 +98,14 @@
 
             const handleError = (mode, err) => {
                 console.error(`${mode} Sync Error:`, err);
-                if (syncText) syncText.innerText = "資料連線中斷";
+                // 顯示具體權限錯誤指引
+                if (err.code === 'permission-denied') {
+                    showError(`[權限拒絕] 路徑不匹配或規則未設定。\n目前的 appId: ${appId}\n請確保 Firestore Rules 包含對應的路徑規則。`);
+                }
             };
 
-            onSnapshot(getColl('confirm'), (s) => handleSnapshot('confirm', s), (e) => handleError('confirm', e));
-            onSnapshot(getColl('fitting'), (s) => handleSnapshot('fitting', s), (e) => handleError('fitting', e));
+            onSnapshot(getColl('confirm'), (s) => handleUpdate('confirm', s), (e) => handleError('confirm', e));
+            onSnapshot(getColl('fitting'), (s) => handleUpdate('fitting', s), (e) => handleError('fitting', e));
         }
 
         // --- 資料庫動作 (符合 Rule 3 Guard) ---
@@ -117,7 +127,7 @@
             }
         };
 
-        // --- UI 控制與渲染邏輯 ---
+        // --- UI 控制項 ---
         window.switchMode = function(mode) {
             window.currentMode = mode;
             document.getElementById('tabConfirm').className = (mode === 'confirm') ? 'px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-blue-600 text-blue-600 transition-all' : 'px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500 transition-all';
@@ -171,7 +181,7 @@
                 const tr = document.createElement('tr');
                 tr.className = "cursor-pointer transition-all hover:bg-slate-50 text-[11px]";
                 if (overdue) tr.classList.add('bg-red-50/50');
-                else if (isLent) tr.classList.add('bg-orange-50/30');
+                else if (isLent) tr.classList.add('bg-orange-50/20');
                 
                 tr.ondblclick = () => window.openActionModal(r);
 
@@ -184,12 +194,12 @@
                     <td class="p-2 font-mono text-blue-600 font-bold">${r.style || ''}</td>
                     <td class="p-2 text-slate-500">${r.color || ''}</td>
                     <td class="p-2 text-slate-400 text-[10px] uppercase">${r.season || ''}</td>
-                    <td class="p-2 text-slate-400 font-mono">${r.loanDate || ''}</td>
+                    <td class="p-2 text-slate-400 font-mono text-[10px]">${r.loanDate || ''}</td>
                     <td class="p-2 text-center text-slate-300 font-bold">${r.expected || ''}</td>
                     <td class="p-2 font-bold text-slate-700">${r.borrower || ''}</td>
                     <td class="p-2 text-green-600 font-black">${r.returnDate || '--'}</td>
                     <td class="p-2 text-[10px] text-slate-400">
-                        ${r.returnDate ? `<div>${r.returnedBy}<br><span class="opacity-50 italic">簽: ${r.confirmerReturn}</span></div>` : '待收'}
+                        ${r.returnDate ? `<div>${r.returnedBy}<br><span class="opacity-50 italic text-[9px]">簽: ${r.confirmerReturn}</span></div>` : '待收'}
                     </td>
                     <td class="p-2 text-center">
                         <div class="flex justify-center gap-2">
@@ -310,8 +320,6 @@
         };
 
         function getMD() { const d = new Date(); return `${d.getMonth() + 1}/${d.getDate()}`; }
-        
-        // 啟動應用
         initApp();
     </script>
 
@@ -320,39 +328,42 @@
         .modal.active { display: flex; }
         .filter-select, .filter-input { width: 100%; font-size: 10px; padding: 2px; border: 1px solid #cbd5e1; border-radius: 4px; outline: none; }
         .table-wrapper { height: calc(100vh - 220px); overflow: auto; border-radius: 8px; border: 1px solid #e2e8f0; }
-        table { border-collapse: separate; border-spacing: 0; min-width: 1350px; width: 100%; }
+        table { border-collapse: separate; border-spacing: 0; min-width: 1400px; width: 100%; }
         thead th { position: sticky; top: 0; background: #f8fafc; z-index: 10; border-bottom: 2px solid #e2e8f0; }
         .filter-row th { position: sticky; top: 37px; background: #f8fafc; z-index: 9; border-bottom: 1px solid #e2e8f0; }
-        .col-stt { width: 50px; } .col-status { width: 80px; } .col-brand { width: 100px; } .col-style { width: 150px; }
+        .col-stt { width: 50px; } .col-status { width: 90px; } .col-brand { width: 100px; } .col-style { width: 150px; }
         .col-color { width: 100px; } .col-season { width: 80px; } .col-date { width: 85px; } .col-days { width: 50px; }
         .col-person { width: 120px; } .col-action { width: 100px; }
         .tab-btn { padding: 12px 0; font-weight: 800; font-size: 14px; flex: 1; text-align: center; border-bottom: 2px solid transparent; color: #94a3b8; transition: all 0.3s; cursor: pointer; }
         .tab-btn.active { border-bottom-color: #2563eb; color: #2563eb; background: #eff6ff; }
         .action-pane { display: none; padding: 24px; } .action-pane.active { display: block; }
-        tr.lent-active { background-color: rgba(255, 247, 237, 0.5); }
+        tr.lent-active { background-color: rgba(255, 247, 237, 0.6); }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-800 p-2">
     <div class="max-w-full mx-auto">
+        <!-- 偵錯診斷框 -->
+        <div id="errorLog" class="hidden bg-red-50 border-2 border-red-200 text-red-600 p-4 rounded-xl mb-4 text-xs font-bold whitespace-pre-line shadow-lg"></div>
+
         <div class="flex flex-col md:flex-row justify-between items-end gap-2 mb-2">
             <div class="flex gap-2">
                 <button id="tabConfirm" onclick="switchMode('confirm')" class="px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-blue-600 text-blue-600 transition-all">確認鞋 (Confirm)</button>
                 <button id="tabFitting" onclick="switchMode('fitting')" class="px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500 transition-all">FITTING鞋 (Fitting)</button>
             </div>
             <div id="statPanel" class="flex gap-4 text-[10px] font-bold bg-white px-4 py-1.5 rounded-lg border shadow-sm mb-1">
-                <span id="syncIndicator" class="flex items-center gap-1 text-slate-400 transition-colors duration-500"><i data-lucide="cloud-check" class="w-3 h-3"></i> <span id="syncText">等待連線中...</span></span>
+                <span id="syncIndicator" class="flex items-center gap-1 text-slate-400 transition-colors duration-500"><i data-lucide="cloud-check" class="w-3 h-3"></i> <span id="syncText">正在連線至雲端...</span></span>
                 <span class="text-slate-500">總數: <span id="statTotal">0</span></span>
             </div>
         </div>
         
         <div class="bg-white p-3 rounded-xl shadow-sm border mb-4 flex justify-between items-center">
-            <div class="flex items-center gap-4 font-black uppercase text-slate-700"><h1 id="titleDisplay"><i data-lucide="layout-list"></i> 確認鞋管理</h1></div>
+            <div class="flex items-center gap-4 font-black uppercase text-slate-700 tracking-tight"><h1 id="titleDisplay"><i data-lucide="layout-list"></i> 確認鞋管理</h1></div>
             <div class="flex items-center gap-4 text-[11px] font-bold">
                 <div class="flex gap-3 border-r pr-4 border-slate-200 text-slate-400 uppercase">
                     <button onclick="exportToCSV()" class="hover:text-emerald-600 transition-all">匯出報表</button>
                     <button onclick="openModal('importModal')" class="hover:text-blue-600 transition-all">匯入資料</button>
                 </div>
-                <button onclick="openActionModal()" class="flex items-center gap-1.5 bg-blue-600 text-white px-5 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 shadow-md active:scale-95 transition-all"><i data-lucide="plus" class="w-4 h-4"></i> 新增借出</button>
+                <button onclick="openActionModal()" class="flex items-center gap-1.5 bg-blue-600 text-white px-5 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 shadow-md active:scale-95 transition-all tracking-widest"><i data-lucide="plus" class="w-4 h-4"></i> 新增借出</button>
             </div>
         </div>
 
@@ -377,11 +388,12 @@
             </table>
             <div id="emptyState" class="p-10 text-center text-slate-300 italic text-xs hidden">目前此類別帳本尚無資料</div>
         </div>
+        <p class="text-[10px] text-slate-400 mt-2 italic px-2">提示：對著型體「左鍵雙擊」可快速開啟借還中心。雲端同步已啟動。</p>
     </div>
 
     <!-- 操作中心彈窗 -->
     <div id="actionModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
-        <div class="bg-white w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden">
+        <div class="bg-white w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div class="flex border-b border-slate-100 bg-slate-50/50">
                 <button id="tabLoan" onclick="switchActionTab('loan')" class="tab-btn active">再次借出</button>
                 <button id="tabReturn" onclick="switchActionTab('return')" class="tab-btn">歸還結案</button>
@@ -390,15 +402,15 @@
             <div class="px-6 py-3 bg-blue-50/50 border-b border-blue-100 text-xs font-bold flex gap-4"><span id="displayBrand" class="text-blue-800 uppercase tracking-tighter"></span><span id="displayStyle" class="text-blue-600 font-mono tracking-tighter"></span></div>
             <div id="paneLoan" class="action-pane active">
                 <form id="addForm" class="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-600">
-                    <div class="col-span-1 space-y-1"><label>品牌 Brand</label><input type="text" id="a_brand" class="border p-2 w-full rounded" required></div>
-                    <div class="col-span-1 space-y-1"><label>型號 Style #</label><input type="text" id="a_style" class="border p-2 w-full rounded" required></div>
-                    <input type="text" id="a_color" placeholder="顏色 Colorway" class="border p-2 rounded">
-                    <input type="text" id="a_season" placeholder="季節 Season" class="border p-2 rounded">
-                    <input type="text" id="a_loan" placeholder="借出日期" class="border p-2 rounded">
-                    <input type="number" id="a_days" placeholder="天數" class="border p-2 rounded">
-                    <input type="text" id="a_borrower" placeholder="借用人 (必填)" class="border-2 border-blue-100 p-2 rounded focus:border-blue-500 outline-none" required>
-                    <input type="text" id="a_confirmer" placeholder="確認簽章" class="border p-2 rounded">
-                    <button type="submit" class="col-span-2 bg-blue-600 text-white py-3 rounded-xl font-black shadow-lg">確認借出並記錄</button>
+                    <div class="col-span-1 space-y-1"><label>品牌 Brand</label><input type="text" id="a_brand" class="border p-2.5 w-full rounded outline-none" required></div>
+                    <div class="col-span-1 space-y-1"><label>型號 Style #</label><input type="text" id="a_style" class="border p-2.5 w-full rounded outline-none" required></div>
+                    <input type="text" id="a_color" placeholder="顏色 Colorway" class="border p-2.5 rounded outline-none">
+                    <input type="text" id="a_season" placeholder="季節 Season" class="border p-2.5 rounded outline-none">
+                    <input type="text" id="a_loan" placeholder="借出日期" class="border p-2.5 rounded outline-none">
+                    <input type="number" id="a_days" placeholder="天數" class="border p-2.5 rounded outline-none">
+                    <input type="text" id="a_borrower" placeholder="借用人 (必填)" class="border-2 border-blue-100 p-2.5 rounded focus:border-blue-500 outline-none" required>
+                    <input type="text" id="a_confirmer" placeholder="確認簽章" class="border p-2.5 rounded outline-none">
+                    <button type="submit" class="col-span-2 bg-blue-600 text-white py-3.5 rounded-xl font-black shadow-lg uppercase tracking-widest active:scale-95 transition-all">確認借出並記錄</button>
                 </form>
             </div>
             <div id="paneReturn" class="action-pane">
@@ -410,23 +422,26 @@
                     </div>
                     <input type="text" id="r_date" class="w-full border p-3 rounded-xl font-black outline-none" placeholder="實際歸還日期">
                     <input type="text" id="r_conf" class="w-full border p-3 rounded-xl font-black outline-none" value="助理已收">
-                    <button type="submit" id="submitReturnBtn" class="w-full bg-green-600 text-white py-3.5 rounded-xl font-black shadow-lg tracking-widest uppercase">確認歸還簽收</button>
+                    <button type="submit" id="submitReturnBtn" class="w-full bg-green-600 text-white py-3.5 rounded-xl font-black shadow-lg tracking-widest uppercase active:scale-95 transition-all">確認歸還簽收</button>
                 </form>
             </div>
         </div>
     </div>
     <div id="deleteModal" class="modal fixed inset-0 bg-black/70 z-50 items-center justify-center p-4">
         <div class="bg-white w-full max-w-xs rounded-2xl p-6 shadow-2xl text-center">
-            <h2 class="font-bold text-lg mb-4 text-red-600">確定刪除嗎？</h2>
-            <div class="flex gap-3 mt-6"><button onclick="closeModal('deleteModal')" class="flex-1 py-2.5 bg-slate-100 text-slate-500 rounded-lg font-bold text-xs">取消</button><button id="confirmDeleteBtn" class="flex-1 py-2.5 bg-red-600 text-white rounded-lg font-bold text-xs shadow-lg">刪除</button></div>
+            <h2 class="font-bold text-lg mb-2 text-slate-800 tracking-tighter">確定要永久刪除嗎？</h2>
+            <div class="flex gap-3 mt-6">
+                <button onclick="closeModal('deleteModal')" class="flex-1 py-2.5 bg-slate-100 text-slate-500 rounded-lg font-bold text-xs active:scale-95 transition-all">取消</button>
+                <button id="confirmDeleteBtn" class="flex-1 py-2.5 bg-red-600 text-white rounded-lg font-bold text-xs shadow-lg active:scale-95 transition-all">確定刪除</button>
+            </div>
         </div>
     </div>
     <div id="importModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
-        <div class="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl font-bold">
-            <h2 class="text-slate-800 mb-4">匯入 CSV 資料</h2>
-            <select id="encoding" class="w-full mb-4 border p-2 rounded"><option value="UTF-8">UTF-8</option><option value="Big5">Big5 (Excel)</option></select>
+        <div class="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl">
+            <h2 class="font-bold text-slate-800 mb-4 tracking-tighter">匯入 CSV 歷史資料</h2>
+            <select id="encoding" class="w-full mb-4 border p-2.5 rounded font-bold outline-none text-xs"><option value="UTF-8">UTF-8 (預設)</option><option value="Big5">Big5 (Excel)</option></select>
             <input type="file" id="fileIn" class="hidden" accept=".csv" onchange="handleImport(event)">
-            <button onclick="document.getElementById('fileIn').click()" class="w-full py-10 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 hover:bg-slate-50 uppercase tracking-widest text-center">點擊選擇檔案</button>
+            <button onclick="document.getElementById('fileIn').click()" class="w-full py-10 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 font-bold hover:bg-slate-50 active:scale-95 transition-all uppercase tracking-widest text-center text-xs">點擊選擇檔案上傳</button>
         </div>
     </div>
 </body>
