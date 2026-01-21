@@ -37,6 +37,11 @@
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'shoe-factory-manager-ledger';
         
         // 初始化 Firebase
+        console.log('🔥 apiKey =', firebaseConfig.apiKey);
+console.log('🔥 projectId =', firebaseConfig.projectId);
+console.log('🔥 authDomain =', firebaseConfig.authDomain);
+const app = initializeApp(firebaseConfig);
+
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
@@ -315,3 +320,4 @@
     </div>
 </body>
 </html>
+
