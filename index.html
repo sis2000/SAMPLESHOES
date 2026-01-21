@@ -13,14 +13,16 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase 配置與環境變數
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'shoe-factory-manager-ledger';
-        
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-
+// --- Firebase 設定區 ---
+// 請將您在 Firebase 控制台取得的金鑰貼在下方：
+const myFirebaseConfig = {
+    apiKey: "AIzaSyBEZPT-gedfUMnwSiSuVY4aXuNNqWHxilA", // 在這裡修改
+    authDomain: "shoe-factory-ledger.firebaseapp.com", // 在這裡修改
+    projectId: "shoe-factory-ledger",                 // 在這裡修改
+    storageBucket: "shoe-factory-ledger.firebasestorage.app", // 在這裡修改
+    messagingSenderId: "380748962069",                // 在這裡修改
+    appId: "1:380748962069:web:bb37fe839b5cdf3c86b11c" // 在這裡修改
+};
         // 全域變數
         window.dataStore = { confirm: [], fitting: [] };
         window.currentMode = 'confirm';
