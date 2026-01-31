@@ -7,7 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -15,7 +14,7 @@
 
         // --- Firebase 設定區 ---
         const myFirebaseConfig = {
-            apiKey: "AIzaSyBEzPT-gedfUMnwSiSuVY4aXuNNqWHxilA",
+            apiKey: "AIzaSyBEZPT-gedfUMnwSiSuVY4aXuNNqWHxilA",
             authDomain: "shoe-factory-ledger.firebaseapp.com",
             projectId: "shoe-factory-ledger",
             storageBucket: "shoe-factory-ledger.firebasestorage.app",
@@ -23,17 +22,14 @@
             appId: "1:380748962069:web:bb37fe839b5cdf3c86b11c"
         };
 
-        // 環境自動判斷 (解決 api-key-not-valid 報錯)
         const isCanvas = typeof __firebase_config !== 'undefined' && __firebase_config !== "";
         const firebaseConfig = isCanvas ? JSON.parse(__firebase_config) : myFirebaseConfig;
         const logicAppId = (typeof __app_id !== 'undefined' && __app_id) ? __app_id : 'shoe-factory-manager-ledger';
         
-        // 初始化 Firebase
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // 全域變數
         window.dataStore = { confirm: [], fitting: [] };
         window.currentMode = 'confirm';
         window.isAuthReady = false;
@@ -41,14 +37,9 @@
         let currentRecord = null;
         let isSyncing = false;
 
-        // --- 核心：認證程序 (符合 Rule 3) ---
         async function initApp() {
-            const syncIndicator = document.getElementById('syncIndicator');
             const syncText = document.getElementById('syncText');
-            const errorLog = document.getElementById('errorLog');
-
             try {
-                // 如果環境有提供 Token，優先使用 (修正 Canvas 權限報錯)
                 if (isCanvas && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
@@ -66,17 +57,13 @@
                 });
             } catch (err) {
                 console.error("Auth Error:", err);
-                if (syncText) syncText.innerText = "連線失敗";
-                showError(`[認證錯誤] ${err.code}\n請檢查 Firebase Authentication 匿名登入是否開啟。`);
+                if (syncText) syncText.innerText = "連線失敗：" + err.code;
             }
         }
 
-        // --- 資料監聽 (符合 Rule 1) ---
         function startSyncing() {
             const syncIndicator = document.getElementById('syncIndicator');
             const syncText = document.getElementById('syncText');
-            
-            // 路徑對齊：/artifacts/{appId}/public/data/...
             const getColl = (mode) => collection(db, 'artifacts', logicAppId, 'public', 'data', `${mode}_ledger`);
 
             const handleUpdate = (mode, snapshot) => {
@@ -88,23 +75,10 @@
                 window.renderTable();
             };
 
-            const handleError = (mode, err) => {
-                console.error(`${mode} Sync Error:`, err);
-                if (err.code === 'permission-denied') {
-                    showError(`[權限錯誤] 無法讀取資料。\n請檢查 Firestore Rules 路徑是否包含：\nmatch /artifacts/${logicAppId}/public/data/`);
-                }
-            };
-
-            onSnapshot(getColl('confirm'), (s) => handleUpdate('confirm', s), (e) => handleError('confirm', e));
-            onSnapshot(getColl('fitting'), (s) => handleUpdate('fitting', s), (e) => handleError('fitting', e));
+            onSnapshot(getColl('confirm'), (s) => handleUpdate('confirm', s));
+            onSnapshot(getColl('fitting'), (s) => handleUpdate('fitting', s));
         }
 
-        function showError(msg) {
-            const el = document.getElementById('errorLog');
-            if (el) { el.innerText = msg; el.classList.remove('hidden'); }
-        }
-
-        // --- 資料庫動作 ---
         window.dbActions = {
             async add(data) {
                 if (!window.isAuthReady) return;
@@ -123,17 +97,13 @@
             }
         };
 
-        // --- UI 控制與渲染 ---
         window.switchMode = function(mode) {
             window.currentMode = mode;
             document.getElementById('tabConfirm').className = (mode === 'confirm') ? 'px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-blue-600 text-blue-600 transition-all' : 'px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500 transition-all';
             document.getElementById('tabFitting').className = (mode === 'fitting') ? 'px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-orange-600 text-orange-600 transition-all' : 'px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500 transition-all';
-            
             const title = document.getElementById('titleDisplay');
             if (title) {
-                const icon = (mode === 'confirm') ? 'layout-list' : 'zap';
-                const color = (mode === 'confirm') ? 'text-blue-600' : 'text-orange-500';
-                title.innerHTML = `<i data-lucide="${icon}" class="${color} w-5 h-5"></i> ${mode === 'confirm' ? '確認鞋管理 (Confirm)' : 'FITTING鞋管理 (Fitting)'}`;
+                title.innerHTML = `<i data-lucide="${mode === 'confirm' ? 'layout-list' : 'zap'}" class="${mode === 'confirm' ? 'text-blue-600' : 'text-orange-500'} w-5 h-5"></i> ${mode === 'confirm' ? '確認鞋管理' : 'FITTING鞋管理'}`;
                 lucide.createIcons();
             }
             filters = {};
@@ -145,9 +115,9 @@
             const body = document.getElementById('ledgerBody');
             if (!body) return;
             body.innerHTML = '';
-            
             const items = window.dataStore[window.currentMode] || [];
             
+            // 下拉選單自動更新 (包含部門)
             const fill = (id, list) => {
                 const s = document.getElementById(id); if (!s) return;
                 const cur = s.value;
@@ -160,6 +130,7 @@
             };
             fill('f_brand', items.map(i => i.brand)); 
             fill('f_season', items.map(i => i.season)); 
+            fill('f_dept', items.map(i => i.dept)); // 部門篩選
             fill('f_borrower', items.map(i => i.borrower));
 
             const isOverdue = (l, days) => {
@@ -171,7 +142,8 @@
 
             const filtered = items.filter(r => {
                 const statusStr = (!r.returnDate || r.returnDate.trim() === '') ? (isOverdue(r.loanDate, r.expected) ? '逾期' : '外借中') : '已結案';
-                const row = [r.stt, statusStr, r.brand, r.style, r.color, r.season, r.loanDate, r.expected, r.borrower, r.returnDate, (r.returnedBy + r.confirmerReturn)];
+                // 索引對應：0:STT, 1:狀態, 2:Brand, 3:Style, 4:Color, 5:Season, 8:部門, 9:借用人
+                const row = [r.stt, statusStr, r.brand, r.style, r.color, r.season, r.loanDate, r.expected, r.dept, r.borrower, r.returnDate];
                 return Object.keys(filters).every(k => !filters[k] || row[k]?.toString().toLowerCase().includes(filters[k]));
             });
 
@@ -183,10 +155,10 @@
                 if (overdue) overdueCount++;
 
                 const tr = document.createElement('tr');
-                tr.className = "cursor-pointer transition-all hover:bg-slate-50";
+                tr.className = "cursor-pointer transition-all hover:bg-slate-50 border-b border-slate-100";
                 if (overdue) tr.classList.add('overdue-row');
                 else if (isLent) tr.classList.add('lent-active');
-
+                
                 tr.ondblclick = () => window.openActionModal(r);
 
                 tr.innerHTML = `
@@ -197,13 +169,14 @@
                     <td class="p-2 font-bold text-slate-700">${r.brand || ''}</td>
                     <td class="p-2 font-mono text-blue-600 font-bold">${r.style || ''}</td>
                     <td class="p-2 text-slate-500">${r.color || ''}</td>
-                    <td class="p-2 text-slate-400">${r.season || ''}</td>
+                    <td class="p-2 text-slate-400 uppercase text-[10px]">${r.season || ''}</td>
                     <td class="p-2 text-slate-400 font-mono">${r.loanDate || ''}</td>
                     <td class="p-2 text-center text-slate-300 font-bold">${r.expected || ''}</td>
+                    <td class="p-2 font-bold text-slate-500">${r.dept || '-'}</td>
                     <td class="p-2 font-bold text-slate-700">${r.borrower || ''}</td>
                     <td class="p-2 text-green-600 font-black">${r.returnDate || '--'}</td>
                     <td class="p-2 text-[10px] text-slate-400">
-                        ${r.returnDate ? `<div>${r.returnedBy}<br><span class="opacity-50">簽: ${r.confirmerReturn}</span></div>` : '待收'}
+                        ${r.returnDate ? `<div>${r.returnedBy}<br><span class="opacity-50 text-[9px]">簽: ${r.confirmerReturn}</span></div>` : '待收'}
                     </td>
                     <td class="p-2 text-center">
                         <div class="flex justify-center gap-2">
@@ -218,48 +191,47 @@
             document.getElementById('statTotal').innerText = items.length;
             document.getElementById('statLent').innerText = lentCount;
             document.getElementById('statOverdue').innerText = overdueCount;
-            const emptyState = document.getElementById('emptyState');
-            if (emptyState) emptyState.className = (filtered.length === 0) ? 'p-10 text-center text-slate-300 italic text-xs' : 'hidden';
+            const es = document.getElementById('emptyState'); if (es) es.className = (filtered.length === 0) ? 'p-10 text-center text-slate-300 italic text-xs' : 'hidden';
             lucide.createIcons();
-        };
+        }
 
-        window.openModal = function(id) { document.getElementById(id).classList.add('active'); }
-        window.closeModal = function(id) { document.getElementById(id).classList.remove('active'); }
-        window.applyFilter = function(idx, val) { filters[idx] = val.toLowerCase(); window.renderTable(); }
-        window.switchActionTab = function(tab) {
+        window.openModal = (id) => document.getElementById(id).classList.add('active');
+        window.closeModal = (id) => document.getElementById(id).classList.remove('active');
+        window.applyFilter = (idx, val) => { filters[idx] = val.toLowerCase(); window.renderTable(); };
+        window.switchActionTab = (tab) => {
             document.getElementById('tabLoan').classList.toggle('active', tab === 'loan');
             document.getElementById('tabReturn').classList.toggle('active', tab === 'return');
             document.getElementById('paneLoan').classList.toggle('active', tab === 'loan');
             document.getElementById('paneReturn').classList.toggle('active', tab === 'return');
-        }
-
-        function getMD() { const d = new Date(); return `${d.getMonth() + 1}/${d.getDate()}`; }
+        };
 
         window.openActionModal = function(record = null) {
             currentRecord = record;
-            const items = window.dataStore[window.currentMode] || [];
-            const max = items.reduce((m, r) => Math.max(m, parseInt(r.stt) || 0), 0);
-            
             document.getElementById('displayBrand').innerText = record ? record.brand : '-';
             document.getElementById('displayStyle').innerText = record ? record.style : '新增記錄';
-
+            
             if (record) {
                 document.getElementById('a_brand').value = record.brand;
                 document.getElementById('a_style').value = record.style;
                 document.getElementById('a_color').value = record.color;
                 document.getElementById('a_season').value = record.season;
+                document.getElementById('a_dept').value = record.dept || '';
                 document.getElementById('a_borrower').value = ''; 
-                document.getElementById('r_display_borrower').innerText = record.borrower;
+                document.getElementById('r_display_borrower').innerText = `${record.dept ? record.dept + ' - ' : ''}${record.borrower}`;
                 document.getElementById('r_display_date').innerText = record.loanDate;
                 document.getElementById('r_date').value = getMD();
-                const isReturned = record.returnDate && record.returnDate.trim() !== '';
-                document.getElementById('returnStatusNotice').classList.toggle('hidden', !isReturned);
-                document.getElementById('submitReturnBtn').classList.toggle('hidden', isReturned);
-                window.switchActionTab(isReturned ? 'loan' : 'return');
+                const isRet = record.returnDate && record.returnDate.trim() !== '';
+                document.getElementById('returnStatusNotice').classList.toggle('hidden', !isRet);
+                document.getElementById('submitReturnBtn').classList.toggle('hidden', isRet);
+                window.switchActionTab(isRet ? 'loan' : 'return');
+                document.getElementById('tabReturn').style.opacity = '1';
+                document.getElementById('tabReturn').style.pointerEvents = 'auto';
             } else {
                 document.getElementById('addForm').reset();
                 document.getElementById('a_season').value = 'FA25';
                 window.switchActionTab('loan');
+                document.getElementById('tabReturn').style.opacity = '0.3';
+                document.getElementById('tabReturn').style.pointerEvents = 'none';
             }
             document.getElementById('a_loan').value = getMD();
             document.getElementById('a_days').value = 2;
@@ -271,15 +243,11 @@
             const items = window.dataStore[window.currentMode] || [];
             const max = items.reduce((m, r) => Math.max(m, parseInt(r.stt) || 0), 0);
             await window.dbActions.add({
-                stt: max + 1,
-                brand: document.getElementById('a_brand').value,
-                style: document.getElementById('a_style').value,
-                color: document.getElementById('a_color').value,
-                season: document.getElementById('a_season').value,
-                loanDate: document.getElementById('a_loan').value,
-                expected: document.getElementById('a_days').value,
-                borrower: document.getElementById('a_borrower').value,
-                confirmerLoan: document.getElementById('a_confirmer').value,
+                stt: max + 1, brand: document.getElementById('a_brand').value, style: document.getElementById('a_style').value,
+                color: document.getElementById('a_color').value, season: document.getElementById('a_season').value,
+                loanDate: document.getElementById('a_loan').value, expected: document.getElementById('a_days').value,
+                dept: document.getElementById('a_dept').value, // 部門欄位
+                borrower: document.getElementById('a_borrower').value, confirmerLoan: document.getElementById('a_confirmer').value,
                 returnDate: '', returnedBy: '', confirmerReturn: ''
             });
             window.closeModal('actionModal');
@@ -296,7 +264,7 @@
             window.closeModal('actionModal');
         };
 
-        window.openDel = function(id) {
+        window.openDel = (id) => {
             document.getElementById('confirmDeleteBtn').onclick = async () => {
                 await window.dbActions.delete(id);
                 window.closeModal('deleteModal');
@@ -304,7 +272,8 @@
             window.openModal('deleteModal');
         };
 
-        window.handleImport = async function(e) {
+        window.handleImport = async (e) => {
+            if (!e.target || !e.target.files || e.target.files.length === 0) return;
             const file = e.target.files[0];
             const enc = document.getElementById('encoding').value;
             const reader = new FileReader();
@@ -312,30 +281,30 @@
                 const lines = evt.target.result.split(/\r?\n/).filter(l => l.trim());
                 for (let l of lines.slice(1)) {
                     const c = l.split(',').map(s => s.replace(/"/g, '').trim());
-                    if (c.length < 4) continue;
+                    if (c.length < 5) continue;
+                    // 根據 CSV 結構映射，假設部門在原有的借用人前面或後面，這裡預設支援 13 欄位結構
                     await window.dbActions.add({
                         stt: c[0] || '', brand: c[1] || '', style: c[2] || '', color: c[3] || '', season: c[4] || '',
-                        loanDate: c[5] || '', expected: c[6] || '', borrower: c[7] || '', confirmerLoan: c[8] || '',
-                        returnDate: c[9] || '', returnedBy: c[10] || '', confirmerReturn: c[11] || ''
+                        loanDate: c[5] || '', expected: c[6] || '', dept: c[7] || '', borrower: c[8] || '', 
+                        confirmerLoan: c[9] || '', returnDate: c[10] || '', returnedBy: c[11] || '', confirmerReturn: c[12] || ''
                     });
                 }
                 window.closeModal('importModal');
+                e.target.value = '';
             };
             reader.readAsText(file, enc);
         };
 
-        window.exportToCSV = function() {
-            const h = "STT(No.),Brand,Style #/Name,Colorway,Season,Loan-out Date,Expected Date,Borrowed by,Confirmed by,Return Date,Returned by,Confirmed by";
+        window.exportToCSV = () => {
+            const h = "STT(No.),Brand,Style #/Name,Colorway,Season,Loan-out Date,Expected Date,Department,Borrowed by,Confirmed by,Return Date,Returned by,Confirmed by";
             const items = window.dataStore[window.currentMode] || [];
-            const r = items.map(i => [i.stt, i.brand, i.style, i.color, i.season, i.loanDate, i.expected, i.borrower, i.confirmerLoan, i.returnDate, i.returnedBy, i.confirmerReturn].join(','));
-            const csv = "\ufeff" + h + "\n" + r.join("\n");
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.setAttribute("download", `${window.currentMode}_ledger.csv`);
-            link.click();
+            const r = items.map(i => [i.stt, i.brand, i.style, i.color, i.season, i.loanDate, i.expected, i.dept, i.borrower, i.confirmerLoan, i.returnDate, i.returnedBy, i.confirmerReturn].join(','));
+            const blob = new Blob(["\ufeff" + h + "\n" + r.join("\n")], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
+            link.setAttribute("download", `${window.currentMode}_ledger.csv`); link.click();
         };
 
+        function getMD() { const d = new Date(); return `${d.getMonth() + 1}/${d.getDate()}`; }
         initApp();
     </script>
 
@@ -347,23 +316,19 @@
         @keyframes pulse-bg { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
         .filter-select, .filter-input { width: 100%; font-size: 10px; padding: 2px; border: 1px solid #cbd5e1; border-radius: 4px; outline: none; }
         .table-wrapper { height: calc(100vh - 220px); overflow: auto; border-radius: 8px; border: 1px solid #e2e8f0; }
-        table { border-collapse: separate; border-spacing: 0; min-width: 1350px; width: 100%; }
+        table { border-collapse: separate; border-spacing: 0; min-width: 1450px; width: 100%; }
         thead th { position: sticky; top: 0; background: #f8fafc; z-index: 10; border-bottom: 2px solid #e2e8f0; }
         .filter-row th { position: sticky; top: 37px; background: #f8fafc; z-index: 9; border-bottom: 1px solid #e2e8f0; }
-        .col-stt { width: 50px; } .col-status { width: 80px; } .col-brand { width: 100px; } .col-style { width: 150px; }
+        .col-stt { width: 50px; } .col-status { width: 85px; } .col-brand { width: 100px; } .col-style { width: 150px; }
         .col-color { width: 100px; } .col-season { width: 80px; } .col-date { width: 85px; } .col-days { width: 50px; }
-        .col-person { width: 120px; } .col-action { width: 100px; }
+        .col-dept { width: 110px; } .col-person { width: 110px; } .col-action { width: 100px; }
         .tab-btn { padding: 12px 0; font-weight: 800; font-size: 14px; flex: 1; text-align: center; border-bottom: 2px solid transparent; color: #94a3b8; transition: all 0.3s; cursor: pointer; }
         .tab-btn.active { border-bottom-color: #2563eb; color: #2563eb; background: #eff6ff; }
         .action-pane { display: none; padding: 24px; } .action-pane.active { display: block; }
     </style>
 </head>
-<body class="bg-slate-100 text-slate-800 p-2 text-sm font-medium">
+<body class="bg-slate-100 text-slate-800 p-2">
     <div class="max-w-full mx-auto">
-        <!-- 診斷錯誤區 (預設隱藏) -->
-        <div id="errorLog" class="hidden bg-red-50 border-2 border-red-200 text-red-600 p-4 rounded-xl mb-4 text-xs font-bold whitespace-pre-line shadow-lg"></div>
-
-        <!-- 頂部分頁與統計 -->
         <div class="flex flex-col md:flex-row justify-between items-end gap-2 mb-2">
             <div class="flex gap-2">
                 <button id="tabConfirm" onclick="switchMode('confirm')" class="px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-blue-600 text-blue-600 transition-all">確認鞋 (Confirm)</button>
@@ -376,29 +341,20 @@
                 <span class="text-red-600 font-black">逾期: <span id="statOverdue">0</span></span>
             </div>
         </div>
-
-        <!-- 功能控制列 -->
+        
         <div class="bg-white p-3 rounded-xl shadow-sm border mb-4 flex justify-between items-center">
+            <div class="flex items-center gap-4"><h1 id="titleDisplay" class="text-base font-black flex items-center gap-2 text-slate-700 uppercase tracking-tight"><i data-lucide="layout-list"></i> 確認鞋管理</h1></div>
             <div class="flex items-center gap-4">
-                <h1 id="titleDisplay" class="text-base font-black flex items-center gap-2 text-slate-700 uppercase"><i data-lucide="layout-list"></i> 確認鞋管理</h1>
-            </div>
-            <div class="flex items-center gap-4">
-                <div class="flex gap-3 border-r pr-4 border-slate-200 text-[11px] font-bold text-slate-400 uppercase tracking-tighter">
-                    <button onclick="exportToCSV()" class="hover:text-emerald-600 transition-colors">匯出報表</button>
-                    <button onclick="openModal('importModal')" class="hover:text-blue-600 transition-colors">匯入資料</button>
-                </div>
-                <button onclick="openActionModal()" class="flex items-center gap-1.5 bg-blue-600 text-white px-5 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 shadow-md active:scale-95 transition-all">
-                    <i data-lucide="plus" class="w-4 h-4"></i> 新增借出
-                </button>
+                <div class="flex gap-3 border-r pr-4 border-slate-200 text-[11px] font-bold text-slate-400 uppercase tracking-tighter"><button onclick="exportToCSV()" class="hover:text-emerald-600 transition-colors">匯出報表</button><button onclick="openModal('importModal')" class="hover:text-blue-600 transition-colors">匯入資料</button></div>
+                <button onclick="openActionModal()" class="flex items-center gap-1.5 bg-blue-600 text-white px-5 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 shadow-md active:scale-95 transition-all tracking-widest uppercase"><i data-lucide="plus" class="w-4 h-4"></i> 新增借出</button>
             </div>
         </div>
 
-        <!-- 主表格區 -->
         <div class="table-wrapper bg-white shadow-inner">
             <table id="mainTable">
                 <thead>
                     <tr class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">
-                        <th class="p-2 col-stt">STT</th><th class="p-2 col-status">狀態</th><th class="p-2 col-brand">Brand</th><th class="p-2 col-style">Style #</th><th class="p-2 col-color">Color</th><th class="p-2 col-season">Season</th><th class="p-2 col-date">借出日期</th><th class="p-2 col-days">天數</th><th class="p-2 col-person">借用人</th><th class="p-2 col-date">歸還日期</th><th class="p-2 col-person">簽收狀態</th><th class="p-2 col-action text-center">操作</th>
+                        <th class="p-2 col-stt">STT</th><th class="p-2 col-status">狀態</th><th class="p-2 col-brand">Brand</th><th class="p-2 col-style">Style #</th><th class="p-2 col-color">Color</th><th class="p-2 col-season">Season</th><th class="p-2 col-date">借出日期</th><th class="p-2 col-days">天數</th><th class="p-2 col-dept">借用部門</th><th class="p-2 col-person">借用人員</th><th class="p-2 col-date">歸還日期</th><th class="p-2 col-person">簽收狀態</th><th class="p-2 col-action text-center">操作</th>
                     </tr>
                     <tr class="filter-row">
                         <th></th>
@@ -407,27 +363,28 @@
                         <th><input type="text" class="filter-input" oninput="applyFilter(3, this.value)" placeholder="搜尋型號"></th>
                         <th><input type="text" class="filter-input" oninput="applyFilter(4, this.value)" placeholder="顏色"></th>
                         <th><select id="f_season" class="filter-select" onchange="applyFilter(5, this.value)"></select></th>
-                        <th></th><th></th><th><select id="f_borrower" class="filter-select" onchange="applyFilter(8, this.value)"></select></th>
+                        <th></th><th></th>
+                        <th><select id="f_dept" class="filter-select" onchange="applyFilter(8, this.value)"></select></th>
+                        <th><select id="f_borrower" class="filter-select" onchange="applyFilter(9, this.value)"></select></th>
                         <th></th><th></th><th></th>
                     </tr>
                 </thead>
                 <tbody id="ledgerBody" class="text-[11px] font-medium divide-y divide-slate-100"></tbody>
             </table>
-            <div id="emptyState" class="p-10 text-center text-slate-300 italic text-xs hidden">目前此類別帳本尚無資料</div>
+            <div id="emptyState" class="p-10 text-center text-slate-300 italic text-xs hidden uppercase">目前帳本尚無資料</div>
         </div>
-        <p class="text-[10px] text-slate-400 mt-2 italic px-2">💡 操作指引：對著任一型體「左鍵雙擊」可快速開啟借還作業中心。系統已支援雲端即時同步。</p>
+        <p class="text-[10px] text-slate-400 mt-2 italic px-2">💡 操作指引：對著任一型體「左鍵雙擊」可快速開啟借還作業中心。系統支援跨部門借調管理。</p>
     </div>
 
-    <!-- 操作中心彈窗 -->
+    <!-- 操作彈窗 -->
     <div id="actionModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
         <div class="bg-white w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div class="flex border-b border-slate-100 bg-slate-50/50">
-                <button id="tabLoan" onclick="switchActionTab('loan')" class="tab-btn active">再次借出</button>
-                <button id="tabReturn" onclick="switchActionTab('return')" class="tab-btn">簽收歸還</button>
+                <button id="tabLoan" onclick="switchActionTab('loan')" class="tab-btn active font-black tracking-widest uppercase">再次借出</button>
+                <button id="tabReturn" onclick="switchActionTab('return')" class="tab-btn font-black tracking-widest uppercase">歸還簽收</button>
                 <button onclick="closeModal('actionModal')" class="px-4 text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
             <div class="px-6 py-3 bg-blue-50/50 border-b border-blue-100 text-xs font-bold flex gap-4 uppercase"><span id="displayBrand" class="text-blue-800"></span><span id="displayStyle" class="text-blue-600 font-mono"></span></div>
-            
             <div id="paneLoan" class="action-pane active">
                 <form id="addForm" class="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-600">
                     <input type="text" id="a_brand" placeholder="Brand" class="border p-2.5 rounded" required>
@@ -436,12 +393,13 @@
                     <input type="text" id="a_season" placeholder="Season" class="border p-2.5 rounded">
                     <input type="text" id="a_loan" placeholder="Loan Date (M/D)" class="border p-2.5 rounded">
                     <input type="number" id="a_days" placeholder="Days" class="border p-2.5 rounded">
-                    <input type="text" id="a_borrower" placeholder="Borrowed by (必填)" class="border-2 border-blue-100 p-2.5 rounded focus:border-blue-500 outline-none" required>
-                    <input type="text" id="a_confirmer" placeholder="Confirmed by" class="border p-2.5 rounded">
+                    <!-- 新增部門與借用人欄位 -->
+                    <input type="text" id="a_dept" placeholder="借用部門 (如: 針車課)" class="border p-2.5 rounded bg-slate-50">
+                    <input type="text" id="a_borrower" placeholder="借用人姓名 (必填)" class="border-2 border-blue-100 p-2.5 rounded focus:border-blue-500 outline-none" required>
+                    <input type="text" id="a_confirmer" placeholder="確認人員" class="col-span-2 border p-2.5 rounded">
                     <button type="submit" class="col-span-2 bg-blue-600 text-white py-3.5 rounded-xl font-black shadow-lg uppercase tracking-widest active:scale-95 transition-all">確認借出並更新雲端</button>
                 </form>
             </div>
-            
             <div id="paneReturn" class="action-pane">
                 <div id="returnStatusNotice" class="hidden p-3 bg-emerald-50 text-emerald-700 mb-4 rounded-lg text-center font-bold text-xs border border-emerald-100 italic">該筆樣鞋已歸還完畢</div>
                 <form id="retForm" class="space-y-4 font-semibold text-xs text-slate-600">
@@ -449,20 +407,19 @@
                         <span>借用人: <strong id="r_display_borrower"></strong></span>
                         <span>借出日: <strong id="r_display_date"></strong></span>
                     </div>
-                    <input type="text" id="r_date" class="w-full border p-3 rounded-xl font-black outline-none shadow-inner" placeholder="實際歸還日期 (M/D)">
+                    <input type="text" id="r_date" class="w-full border p-3 rounded-xl font-black outline-none" placeholder="實際歸還日期 (M/D)">
                     <input type="text" id="r_conf" class="w-full border p-3 rounded-xl font-black outline-none" value="助理已收">
-                    <button type="submit" id="submitReturnBtn" class="w-full bg-green-600 text-white py-3.5 rounded-xl font-black shadow-lg tracking-widest uppercase active:scale-95 transition-all">確認歸還簽收</button>
+                    <button type="submit" id="submitReturnBtn" class="w-full bg-green-600 text-white py-3.5 rounded-xl font-black shadow-lg uppercase tracking-widest active:scale-95 transition-all">確認簽收結案</button>
                 </form>
             </div>
         </div>
     </div>
 
-    <!-- 刪除確認彈窗 -->
+    <!-- 刪除確認 -->
     <div id="deleteModal" class="modal fixed inset-0 bg-black/70 z-50 items-center justify-center p-4">
-        <div class="bg-white w-full max-w-xs rounded-2xl p-6 shadow-2xl text-center">
+        <div class="bg-white w-full max-w-xs rounded-2xl p-6 shadow-2xl text-center animate-in zoom-in-95 duration-200">
             <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4"><i data-lucide="alert-triangle" class="w-8 h-8"></i></div>
-            <h2 class="font-bold text-lg mb-2 text-slate-800 tracking-tighter uppercase">確定要刪除嗎？</h2>
-            <p class="text-[10px] text-slate-400 mb-8 font-bold uppercase tracking-widest">刪除後此筆紀錄將無法復原</p>
+            <h2 class="font-bold text-lg mb-2 text-slate-800 tracking-tighter">確定要永久刪除嗎？</h2>
             <div class="flex gap-3 mt-6">
                 <button onclick="closeModal('deleteModal')" class="flex-1 py-2.5 bg-slate-100 text-slate-500 rounded-lg font-bold text-xs active:scale-95 transition-all">取消</button>
                 <button id="confirmDeleteBtn" class="flex-1 py-2.5 bg-red-600 text-white rounded-lg font-bold text-xs shadow-lg active:scale-95 transition-all">確定刪除</button>
@@ -472,13 +429,12 @@
 
     <!-- 匯入彈窗 -->
     <div id="importModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
-        <div class="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl">
-            <h2 class="font-bold text-slate-800 mb-4 tracking-tighter uppercase">匯入 CSV 資料</h2>
-            <select id="encoding" class="w-full mb-4 border p-2.5 rounded font-bold outline-none text-xs"><option value="UTF-8">UTF-8 (預設)</option><option value="Big5">Big5 (Excel)</option></select>
+        <div class="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl font-bold">
+            <h2 class="text-slate-800 mb-4 tracking-tighter uppercase">匯入 CSV 資料</h2>
+            <select id="encoding" class="w-full mb-4 border p-2.5 rounded text-xs outline-none"><option value="UTF-8">UTF-8 (預設)</option><option value="Big5">Big5 (Excel 繁體)</option></select>
             <input type="file" id="fileIn" class="hidden" accept=".csv" onchange="handleImport(event)">
-            <button onclick="document.getElementById('fileIn').click()" class="w-full py-10 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 font-bold hover:bg-slate-50 active:scale-95 transition-all uppercase tracking-widest text-center text-xs">點擊選擇檔案上傳</button>
+            <button onclick="document.getElementById('fileIn').click()" class="w-full py-10 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 font-bold hover:bg-slate-50 active:scale-95 transition-all uppercase tracking-widest text-center text-xs">點擊選擇檔案</button>
         </div>
     </div>
 </body>
 </html>
-
