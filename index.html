@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>樣鞋房雙系統管理帳本 (全功能終極版)</title>
+    <title>樣鞋房雙系統管理帳本 (歷史流水版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     
@@ -33,15 +33,20 @@
 
         // 全域變數
         window.dataStore = { confirm: [], fitting: [] };
-        window.currentMode = 'confirm';
+        window.currentMode = 'confirm'; // confirm, fitting
+        window.viewType = 'ledger'; // ledger (流水帳), inventory (庫存)
         window.isAuthReady = false;
         window.selectedIds = new Set(); 
         let filters = {};
         let currentRecord = null;
         let isSyncing = false;
 
+        // 安全調用 Lucide
+        function refreshIcons() {
+            if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+        }
+
         async function initApp() {
-            const syncText = document.getElementById('syncText');
             try {
                 if (isCanvas && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
@@ -57,9 +62,9 @@
                         }
                     }
                 });
+                refreshIcons();
             } catch (err) {
                 console.error("Auth Error:", err);
-                if (syncText) syncText.innerText = "連線失敗";
             }
         }
 
@@ -95,22 +100,38 @@
             }
         };
 
+        window.openActionModalById = function(id) {
+            const items = window.dataStore[window.currentMode] || [];
+            const record = items.find(i => i.id === id);
+            if (record) window.openActionModal(record);
+        };
+
         window.switchMode = function(mode) {
             window.currentMode = mode;
             window.selectedIds.clear();
-            document.getElementById('tabConfirm').className = (mode === 'confirm') ? 'px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-blue-600 text-blue-600 transition-all' : 'px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500 transition-all';
-            document.getElementById('tabFitting').className = (mode === 'fitting') ? 'px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-orange-600 text-orange-600 transition-all' : 'px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500 transition-all';
-            const title = document.getElementById('titleDisplay');
-            if (title) {
-                title.innerHTML = `<i data-lucide="${mode === 'confirm' ? 'layout-list' : 'zap'}" class="${mode === 'confirm' ? 'text-blue-600' : 'text-orange-500'} w-5 h-5"></i> ${mode === 'confirm' ? '確認鞋管理' : 'FITTING鞋管理'}`;
-                lucide.createIcons();
-            }
-            filters = {};
-            document.querySelectorAll('.filter-input, .filter-select').forEach(i => i.value = '');
+            updateTabStyles();
             window.renderTable();
         };
 
-        // --- 多選邏輯 ---
+        window.switchView = function(view) {
+            window.viewType = view;
+            window.selectedIds.clear();
+            updateTabStyles();
+            window.renderTable();
+        };
+
+        function updateTabStyles() {
+            document.getElementById('tabConfirm').className = (window.currentMode === 'confirm') ? 'px-4 py-2 rounded-lg font-bold text-sm bg-blue-600 text-white shadow-md' : 'px-4 py-2 rounded-lg font-bold text-sm bg-slate-200 text-slate-500';
+            document.getElementById('tabFitting').className = (window.currentMode === 'fitting') ? 'px-4 py-2 rounded-lg font-bold text-sm bg-orange-500 text-white shadow-md' : 'px-4 py-2 rounded-lg font-bold text-sm bg-slate-200 text-slate-500';
+            document.getElementById('viewLedger').className = (window.viewType === 'ledger') ? 'px-6 py-2 rounded-t-lg font-black text-sm bg-white border-b-2 border-blue-600 text-blue-600' : 'px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-100 text-slate-400';
+            document.getElementById('viewInventory').className = (window.viewType === 'inventory') ? 'px-6 py-2 rounded-t-lg font-black text-sm bg-white border-b-2 border-emerald-600 text-emerald-600' : 'px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-100 text-slate-400';
+            const title = document.getElementById('titleDisplay');
+            const icon = window.viewType === 'ledger' ? 'layout-list' : 'package-search';
+            const text = `${window.currentMode === 'confirm' ? '確認鞋' : 'FITTING鞋'} ${window.viewType === 'ledger' ? '借還流水帳' : '在庫現況清單'}`;
+            title.innerHTML = `<i data-lucide="${icon}" class="w-5 h-5"></i> ${text}`;
+            refreshIcons();
+        }
+
         window.toggleRowSelection = function(id) {
             if (window.selectedIds.has(id)) window.selectedIds.delete(id);
             else window.selectedIds.add(id);
@@ -130,14 +151,26 @@
 
         function getFilteredItems() {
             const items = window.dataStore[window.currentMode] || [];
-            return items.filter(r => {
-                const isOverdue = (l, days) => {
-                    if (!l || !days) return false;
-                    const t = new Date(); const p = l.split('/'); if (p.length < 2) return false;
-                    const ln = new Date(t.getFullYear(), parseInt(p[0]) - 1, parseInt(p[1]));
-                    ln.setDate(ln.getDate() + parseInt(days)); return t > ln;
-                };
-                const statusStr = (!r.returnDate || r.returnDate.trim() === '') ? (isOverdue(r.loanDate, r.expected) ? '逾期' : '外借中') : '已結案';
+            let displayItems = items;
+
+            if (window.viewType === 'inventory') {
+                // 核心修復：庫存視圖只抓取每個 Brand+Style 最新的那筆，且那筆必須是已歸還狀態
+                const latestMap = new Map();
+                items.forEach(item => {
+                    const key = `${item.brand}_${item.style}`.toLowerCase();
+                    // 根據 STT 或 這裡假設 STT 越大代表越新
+                    if (!latestMap.has(key) || parseInt(item.stt) > parseInt(latestMap.get(key).stt)) {
+                        latestMap.set(key, item);
+                    }
+                });
+                displayItems = Array.from(latestMap.values()).filter(i => i.returnDate && i.returnDate.trim() !== '');
+            } else {
+                // 流水帳模式：按序號反向排序，顯示所有紀錄
+                displayItems = [...items].sort((a, b) => parseInt(b.stt) - parseInt(a.stt));
+            }
+
+            return displayItems.filter(r => {
+                const statusStr = (!r.returnDate || r.returnDate.trim() === '') ? '外借中' : '已結案';
                 const row = [r.stt, statusStr, r.brand, r.style, r.color, r.season, r.loanDate, r.expected, r.dept, r.borrower, r.returnDate];
                 return Object.keys(filters).every(k => !filters[k] || row[k]?.toString().toLowerCase().includes(filters[k]));
             });
@@ -149,12 +182,17 @@
             body.innerHTML = '';
             const filtered = getFilteredItems();
             const bulkBtn = document.getElementById('bulkReturnBtn');
-            if (window.selectedIds.size > 0) {
+            const selectHeader = document.getElementById('selectHeader');
+            const filterSelect = document.getElementById('filterSelect');
+            
+            if (selectHeader) selectHeader.style.display = window.viewType === 'inventory' ? 'none' : 'table-cell';
+            if (filterSelect) filterSelect.style.display = window.viewType === 'inventory' ? 'none' : 'table-cell';
+
+            if (window.selectedIds.size > 0 && window.viewType === 'ledger') {
                 bulkBtn.classList.remove('hidden');
                 bulkBtn.innerText = `批量歸還 (${window.selectedIds.size}筆)`;
             } else { bulkBtn.classList.add('hidden'); }
 
-            // 下拉更新
             const fill = (id, list) => {
                 const s = document.getElementById(id); if (!s) return;
                 const cur = s.value;
@@ -175,13 +213,28 @@
                 const isSelected = window.selectedIds.has(r.id);
                 const tr = document.createElement('tr');
                 tr.className = `cursor-pointer border-b border-slate-100 transition-all hover:bg-slate-50 ${isSelected ? 'bg-blue-50' : ''}`;
-                tr.onclick = (e) => { if (isLent && e.target.type !== 'checkbox' && !e.target.closest('button')) { window.toggleRowSelection(r.id); } };
+                
+                if (window.viewType === 'ledger') {
+                    tr.onclick = (e) => { if (isLent && e.target.type !== 'checkbox' && !e.target.closest('button')) { window.toggleRowSelection(r.id); } };
+                }
                 tr.ondblclick = () => window.openActionModal(r);
 
+                // 修正後的狀態標籤邏輯
+                let statusBadge = '';
+                if (window.viewType === 'inventory') {
+                    statusBadge = '<span class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold">在庫房中</span>';
+                } else {
+                    statusBadge = isLent ? 
+                        '<span class="text-[9px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-bold">外借中</span>' : 
+                        '<span class="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold">已結案</span>';
+                }
+
                 tr.innerHTML = `
-                    <td class="p-2 text-center">${isLent ? `<input type="checkbox" class="w-4 h-4 rounded accent-blue-600" ${isSelected ? 'checked' : ''} onchange="window.toggleRowSelection('${r.id}')">` : ''}</td>
-                    <td class="p-2 text-slate-400 font-mono">${r.stt}</td>
-                    <td class="p-2">${isLent ? '<span class="text-[9px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-bold">外借中</span>' : '<span class="text-[9px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">已結案</span>'}</td>
+                    <td class="p-2 text-center" style="${window.viewType === 'inventory' ? 'display:none' : ''}">
+                        ${isLent ? `<input type="checkbox" class="w-4 h-4 rounded accent-blue-600" ${isSelected ? 'checked' : ''} onchange="window.toggleRowSelection('${r.id}')">` : ''}
+                    </td>
+                    <td class="p-2 text-slate-400 font-mono text-[10px]">${r.stt}</td>
+                    <td class="p-2">${statusBadge}</td>
                     <td class="p-2 font-bold text-slate-700">${r.brand || ''}</td>
                     <td class="p-2 font-mono text-blue-600 font-bold">${r.style || ''}</td>
                     <td class="p-2 text-slate-500">${r.color || ''}</td>
@@ -191,17 +244,21 @@
                     <td class="p-2 font-bold text-slate-500">${r.dept || '-'}</td>
                     <td class="p-2 font-bold text-slate-700">${r.borrower || ''}</td>
                     <td class="p-2 text-green-600 font-black">${r.returnDate || '--'}</td>
-                    <td class="p-2 text-[10px] text-slate-400">${r.returnDate ? `${r.returnedBy}<br><span class="opacity-50">簽:${r.confirmerReturn}</span>` : '待收'}</td>
+                    <td class="p-2 text-[10px] text-slate-400">${r.returnDate ? `${r.returnedBy}<br><span class="opacity-50 text-[9px]">簽:${r.confirmerReturn}</span>` : '待收'}</td>
                     <td class="p-2 text-center">
                         <div class="flex justify-center gap-2">
-                            <button onclick="event.stopPropagation(); window.openActionModal(JSON.parse('${JSON.stringify(r).replace(/'/g, "\\'")}'))" class="text-slate-300 hover:text-blue-600"><i data-lucide="more-horizontal" class="w-4 h-4"></i></button>
+                            <button onclick="event.stopPropagation(); window.openActionModalById('${r.id}')" class="${isLent ? 'text-blue-500' : 'text-emerald-500'} hover:scale-110 transition-all">
+                                <i data-lucide="${isLent ? 'check-square' : 'plus-circle'}" class="w-5 h-5"></i>
+                            </button>
                             <button onclick="event.stopPropagation(); window.openDel('${r.id}')" class="text-slate-200 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                         </div>
                     </td>
                 `;
                 body.appendChild(tr);
             });
-            lucide.createIcons();
+            const es = document.getElementById('emptyState');
+            if (es) es.className = (filtered.length === 0) ? 'p-16 text-center text-slate-300 italic text-xs' : 'hidden';
+            refreshIcons();
         }
 
         window.openModal = (id) => document.getElementById(id).classList.add('active');
@@ -219,24 +276,28 @@
             currentRecord = record;
             document.getElementById('displayBrand').innerText = record ? record.brand : '-';
             document.getElementById('displayStyle').innerText = record ? record.style : '新增記錄';
+            
             if (record) {
-                document.getElementById('a_brand').value = record.brand;
-                document.getElementById('a_style').value = record.style;
-                document.getElementById('a_color').value = record.color;
-                document.getElementById('a_season').value = record.season;
-                document.getElementById('a_dept').value = record.dept || '';
+                document.getElementById('a_brand').value = record.brand || '';
+                document.getElementById('a_style').value = record.style || '';
+                document.getElementById('a_color').value = record.color || '';
+                document.getElementById('a_season').value = record.season || '';
+                document.getElementById('a_dept').value = ''; 
                 document.getElementById('a_borrower').value = ''; 
                 document.getElementById('r_display_borrower').innerText = `${record.dept ? record.dept + '-' : ''}${record.borrower}`;
-                document.getElementById('r_display_date').innerText = record.loanDate;
+                document.getElementById('r_display_date').innerText = record.loanDate || '-';
                 const isRet = record.returnDate && record.returnDate.trim() !== '';
                 document.getElementById('returnStatusNotice').classList.toggle('hidden', !isRet);
                 document.getElementById('submitReturnBtn').classList.toggle('hidden', isRet);
+                
+                // 如果是已經還過的，打開彈窗時預設切換到「再次借出」
                 window.switchActionTab(isRet ? 'loan' : 'return');
             } else {
                 document.getElementById('addForm').reset();
                 window.switchActionTab('loan');
             }
             window.openModal('actionModal');
+            refreshIcons();
         };
 
         window.openBulkReturnModal = () => {
@@ -267,13 +328,22 @@
 
         document.getElementById('addForm').onsubmit = async (e) => {
             e.preventDefault();
-            const items = window.dataStore[window.currentMode] || [];
-            const max = items.reduce((m, r) => Math.max(m, parseInt(r.stt) || 0), 0);
+            const allItems = window.dataStore[window.currentMode] || [];
+            // 核心修復：借出永遠是 addDoc 新增一筆，不影響舊紀錄
+            const maxStt = allItems.reduce((m, r) => Math.max(m, parseInt(r.stt) || 0), 0);
             await window.dbActions.add({
-                stt: max + 1, brand: document.getElementById('a_brand').value, style: document.getElementById('a_style').value,
-                color: document.getElementById('a_color').value, season: document.getElementById('a_season').value,
-                loanDate: getMD(), expected: 2, dept: document.getElementById('a_dept').value,
-                borrower: document.getElementById('a_borrower').value, returnDate: '', returnedBy: '', confirmerReturn: ''
+                stt: maxStt + 1, 
+                brand: document.getElementById('a_brand').value, 
+                style: document.getElementById('a_style').value,
+                color: document.getElementById('a_color').value, 
+                season: document.getElementById('a_season').value,
+                loanDate: getMD(), 
+                expected: 2, 
+                dept: document.getElementById('a_dept').value,
+                borrower: document.getElementById('a_borrower').value, 
+                returnDate: '', 
+                returnedBy: '', 
+                confirmerReturn: ''
             });
             window.closeModal('actionModal');
         };
@@ -332,7 +402,7 @@
         .modal { display: none; }
         .modal.active { display: flex; }
         .filter-select, .filter-input { width: 100%; font-size: 10px; padding: 2px; border: 1px solid #cbd5e1; border-radius: 4px; outline: none; }
-        .table-wrapper { height: calc(100vh - 220px); overflow: auto; border-radius: 8px; border: 1px solid #e2e8f0; }
+        .table-wrapper { height: calc(100vh - 240px); overflow: auto; border-radius: 8px; border: 1px solid #e2e8f0; }
         table { border-collapse: separate; border-spacing: 0; min-width: 1450px; width: 100%; }
         thead th { position: sticky; top: 0; background: #f8fafc; z-index: 10; border-bottom: 2px solid #e2e8f0; }
         .filter-row th { position: sticky; top: 37px; background: #f8fafc; z-index: 9; border-bottom: 1px solid #e2e8f0; }
@@ -341,42 +411,50 @@
         .action-pane { display: none; padding: 24px; } .action-pane.active { display: block; }
     </style>
 </head>
-<body class="bg-slate-100 text-slate-800 p-2 text-sm">
+<body class="bg-slate-50 text-slate-800 p-2 text-sm font-medium">
     <div class="max-w-full mx-auto">
-        <!-- 頂部與統計 -->
-        <div class="flex justify-between items-end mb-2">
-            <div class="flex gap-2">
-                <button id="tabConfirm" onclick="switchMode('confirm')" class="px-6 py-2 rounded-t-lg font-bold text-sm bg-white border-b-2 border-blue-600 text-blue-600 transition-all">確認鞋 (Confirm)</button>
-                <button id="tabFitting" onclick="switchMode('fitting')" class="px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-200 text-slate-500 transition-all">FITTING鞋</button>
+        <!-- 第一層控制：類別切換 -->
+        <div class="flex justify-between items-center mb-3">
+            <div class="flex gap-2 p-1 bg-slate-200 rounded-xl">
+                <button id="tabConfirm" onclick="switchMode('confirm')" class="px-4 py-2 rounded-lg font-bold text-sm bg-blue-600 text-white shadow-md transition-all">確認鞋 (Confirm)</button>
+                <button id="tabFitting" onclick="switchMode('fitting')" class="px-4 py-2 rounded-lg font-bold text-sm bg-slate-200 text-slate-500 transition-all">FITTING鞋</button>
             </div>
-            <div class="flex gap-4 text-[10px] font-bold bg-white px-4 py-1.5 rounded-lg border shadow-sm mb-1 uppercase tracking-tighter">
-                <span id="syncIndicator" class="flex items-center gap-1 text-slate-400 transition-colors"><i data-lucide="cloud-check" class="w-3 h-3"></i> <span id="syncText">正在連線...</span></span>
+            <div class="flex gap-4 text-[10px] font-black bg-white px-4 py-2 rounded-xl border shadow-sm uppercase tracking-tighter">
+                <span id="syncIndicator" class="flex items-center gap-1 text-slate-400"><i data-lucide="cloud-check" class="w-3 h-3"></i> <span id="syncText">正在連線...</span></span>
             </div>
         </div>
+
+        <!-- 第二層控制：檢視模式切換 -->
+        <div class="flex gap-2 px-2">
+            <button id="viewLedger" onclick="switchView('ledger')" class="px-6 py-2 rounded-t-lg font-black text-sm bg-white border-b-2 border-blue-600 text-blue-600 transition-all">借還流水帳 (完整歷史)</button>
+            <button id="viewInventory" onclick="switchView('inventory')" class="px-6 py-2 rounded-t-lg font-bold text-sm bg-slate-100 text-slate-400 transition-all flex items-center gap-2">
+                <i data-lucide="package" class="w-4 h-4"></i> 樣鞋房在庫現況 (現有實體)
+            </button>
+        </div>
         
-        <!-- 功能控制列 -->
-        <div class="bg-white p-3 rounded-xl shadow-sm border mb-4 flex justify-between items-center">
-            <div class="flex items-center gap-4"><h1 id="titleDisplay" class="text-base font-black flex items-center gap-2 text-slate-700 uppercase tracking-tight"><i data-lucide="layout-list"></i> 確認鞋管理</h1></div>
+        <!-- 主控制面板 -->
+        <div class="bg-white p-3 rounded-b-xl rounded-tr-xl shadow-sm border mb-4 flex justify-between items-center">
+            <div class="flex items-center gap-4"><h1 id="titleDisplay" class="text-base font-black flex items-center gap-2 text-slate-700 uppercase tracking-tight"></h1></div>
             <div class="flex items-center gap-2">
                 <button id="bulkReturnBtn" onclick="openBulkReturnModal()" class="hidden bg-indigo-100 text-indigo-700 px-4 py-2 rounded-lg text-xs font-black border border-indigo-200 hover:bg-indigo-200 transition-all">批量歸還 (0)</button>
                 <div class="flex gap-3 border-r pr-4 border-slate-200 text-[11px] font-bold text-slate-400 uppercase tracking-tighter">
-                    <button onclick="exportToCSV()" class="hover:text-emerald-600">匯出報表</button>
-                    <button onclick="openModal('importModal')" class="hover:text-blue-600">匯入資料</button>
+                    <button onclick="exportToCSV()" class="hover:text-emerald-600 transition-colors">匯出報表</button>
+                    <button onclick="openModal('importModal')" class="hover:text-blue-600 transition-colors">匯入資料</button>
                 </div>
                 <button onclick="openActionModal()" class="bg-blue-600 text-white px-5 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 shadow-md active:scale-95 transition-all"><i data-lucide="plus" class="inline w-4 h-4 mr-1"></i> 新增借出</button>
             </div>
         </div>
 
-        <!-- 表格 -->
+        <!-- 表格區 -->
         <div class="table-wrapper bg-white shadow-inner">
             <table>
                 <thead>
                     <tr class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">
-                        <th class="p-2 w-[40px] text-center"><input type="checkbox" onchange="toggleSelectAll(this.checked)"></th>
-                        <th class="p-2 w-[50px]">STT</th><th class="p-2 w-[85px]">狀態</th><th class="p-2 w-[100px]">Brand</th><th class="p-2 w-[150px]">Style #</th><th class="p-2 w-[100px]">Color</th><th class="p-2 w-[80px]">Season</th><th class="p-2 w-[85px]">借出日</th><th class="p-2 w-[50px]">天數</th><th class="p-2 w-[110px]">部門</th><th class="p-2 w-[110px]">借用人</th><th class="p-2 w-[100px]">歸還日</th><th class="p-2 w-[120px]">簽收狀態</th><th class="p-2 w-[100px] text-center">操作</th>
+                        <th id="selectHeader" class="p-2 w-[40px] text-center"><input type="checkbox" onchange="toggleSelectAll(this.checked)"></th>
+                        <th class="p-2 w-[50px]">STT</th><th class="p-2 w-[85px]">當前狀態</th><th class="p-2 w-[100px]">Brand</th><th class="p-2 w-[150px]">Style #</th><th class="p-2 w-[100px]">Color</th><th class="p-2 w-[80px]">Season</th><th class="p-2 w-[85px]">借出日期</th><th class="p-2 w-[50px]">天數</th><th class="p-2 w-[110px]">部門</th><th class="p-2 w-[110px]">人員</th><th class="p-2 w-[100px]">歸還日期</th><th class="p-2 w-[120px]">簽收紀錄</th><th class="p-2 w-[100px] text-center">操作</th>
                     </tr>
                     <tr class="filter-row">
-                        <th></th><th></th>
+                        <th id="filterSelect" style="display: table-cell;"></th><th></th>
                         <th><select class="filter-select" onchange="applyFilter(1, this.value)"><option value="">全部</option><option value="外借中">外借中</option><option value="已結案">已結案</option></select></th>
                         <th><select id="f_brand" class="filter-select" onchange="applyFilter(2, this.value)"></select></th>
                         <th><input type="text" class="filter-input" oninput="applyFilter(3, this.value)" placeholder="搜尋型號"></th>
@@ -386,25 +464,30 @@
                         <th></th><th></th><th></th>
                     </tr>
                 </thead>
-                <tbody id="ledgerBody" class="text-[11px] divide-y divide-slate-100"></tbody>
+                <tbody id="ledgerBody" class="text-[11px] divide-y divide-slate-100 font-medium"></tbody>
             </table>
-            <div id="emptyState" class="p-10 text-center text-slate-300 italic text-xs hidden">目前帳本尚無資料</div>
+            <div id="emptyState" class="p-16 text-center text-slate-300 italic text-xs hidden">目前此視圖下尚無資料</div>
         </div>
+        <p class="text-[10px] text-slate-400 mt-3 italic px-2">💡 說明：【流水帳】視圖會保留所有歷史紀錄；【在庫現況】僅顯示目前在架上的鞋子，方便您快速再次借出。</p>
     </div>
 
-    <!-- 各種彈窗系統 -->
+    <!-- 批量歸還彈窗 -->
     <div id="bulkReturnModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
         <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl">
-            <h3 class="text-xl font-black mb-4">批量歸還簽收</h3>
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-black text-slate-800">批量歸還簽收</h3>
+                <button onclick="closeModal('bulkReturnModal')" class="text-slate-400 hover:text-slate-600 transition-colors"><i data-lucide="x" class="w-6 h-6"></i></button>
+            </div>
             <div id="bulkReturnList" class="max-h-40 overflow-y-auto mb-6"></div>
             <form onsubmit="handleBulkReturnSubmit(event)" class="space-y-4">
-                <input type="text" id="bulk_r_date" placeholder="日期 (M/D)" class="w-full border p-3 rounded-xl font-bold bg-slate-50">
-                <input type="text" id="bulk_r_conf" value="助理已收" class="w-full border p-3 rounded-xl font-bold bg-slate-50">
-                <button type="submit" class="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black shadow-lg">確認批量收回</button>
+                <input type="text" id="bulk_r_date" placeholder="實際歸還日 (M/D)" class="w-full border p-3 rounded-xl font-bold bg-slate-50 outline-none">
+                <input type="text" id="bulk_r_conf" value="助理已收" class="w-full border p-3 rounded-xl font-bold bg-slate-50 outline-none">
+                <button type="submit" class="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-emerald-700 transition-all">確認批量收回結案</button>
             </form>
         </div>
     </div>
 
+    <!-- 操作彈窗 -->
     <div id="actionModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
         <div class="bg-white w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95">
             <div class="flex border-b border-slate-100 bg-slate-50/50">
@@ -412,7 +495,7 @@
                 <button id="tabReturn" onclick="switchActionTab('return')" class="tab-btn">歸還簽收</button>
                 <button onclick="closeModal('actionModal')" class="px-4 text-slate-400"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
-            <div class="px-6 py-3 bg-blue-50/50 border-b border-blue-100 text-xs font-bold flex gap-4 uppercase"><span id="displayBrand" class="text-blue-800"></span><span id="displayStyle" class="text-blue-600 font-mono"></span></div>
+            <div class="px-6 py-3 bg-blue-50/50 border-b border-blue-100 text-xs font-bold flex gap-4 uppercase tracking-tighter"><span id="displayBrand" class="text-blue-800"></span><span id="displayStyle" class="text-blue-600 font-mono"></span></div>
             <div id="paneLoan" class="action-pane active">
                 <form id="addForm" class="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-600">
                     <input type="text" id="a_brand" placeholder="Brand" class="border p-2.5 rounded" required>
@@ -421,42 +504,47 @@
                     <input type="text" id="a_season" placeholder="Season" class="border p-2.5 rounded">
                     <input type="text" id="a_dept" placeholder="借用部門 (如: 針車課)" class="border p-2.5 rounded bg-slate-50">
                     <input type="text" id="a_borrower" placeholder="借用人姓名 (必填)" class="border-2 border-blue-100 p-2.5 rounded focus:border-blue-500 outline-none" required>
-                    <button type="submit" class="col-span-2 bg-blue-600 text-white py-3.5 rounded-xl font-black shadow-lg">確認借出並更新雲端</button>
+                    <button type="submit" class="col-span-2 bg-blue-600 text-white py-3.5 rounded-xl font-black shadow-lg hover:bg-blue-700 transition-all uppercase tracking-widest">確認借出 (新增一筆流水)</button>
                 </form>
             </div>
             <div id="paneReturn" class="action-pane">
-                <div id="returnStatusNotice" class="hidden p-3 bg-emerald-50 text-emerald-700 mb-4 rounded-lg text-center font-bold text-xs border border-emerald-100 italic">該筆樣鞋已歸還完畢</div>
+                <div id="returnStatusNotice" class="hidden p-3 bg-emerald-50 text-emerald-700 mb-4 rounded-lg text-center font-bold text-xs border border-emerald-100 italic">該筆歷史紀錄已歸還完畢</div>
                 <form id="retForm" class="space-y-4 font-semibold text-xs text-slate-600">
                     <div class="bg-slate-50 p-4 rounded-xl flex justify-between border border-slate-100">
                         <span>借用人: <strong id="r_display_borrower"></strong></span>
                         <span>借出日: <strong id="r_display_date"></strong></span>
                     </div>
-                    <input type="text" id="r_date" class="w-full border p-3 rounded-xl font-black outline-none shadow-inner" placeholder="日期 (M/D)">
+                    <input type="text" id="r_date" class="w-full border p-3 rounded-xl font-black outline-none shadow-inner" placeholder="實際歸還日期 (M/D)">
                     <input type="text" id="r_conf" class="w-full border p-3 rounded-xl font-black outline-none" value="助理已收">
-                    <button type="submit" id="submitReturnBtn" class="w-full bg-green-600 text-white py-3.5 rounded-xl font-black shadow-lg uppercase">確認簽收結案</button>
+                    <button type="submit" id="submitReturnBtn" class="w-full bg-green-600 text-white py-3.5 rounded-xl font-black shadow-lg uppercase tracking-widest hover:bg-green-700 transition-all">確認簽收結案</button>
                 </form>
             </div>
         </div>
     </div>
 
+    <!-- 刪除確認 -->
     <div id="deleteModal" class="modal fixed inset-0 bg-black/70 z-50 items-center justify-center p-4">
         <div class="bg-white w-full max-w-xs rounded-2xl p-6 shadow-2xl text-center">
-            <h2 class="font-bold text-lg mb-6 text-red-600 tracking-tighter">確定要刪除記錄嗎？</h2>
+            <div class="flex justify-center mb-4 text-red-500"><i data-lucide="alert-triangle" class="w-12 h-12"></i></div>
+            <h2 class="font-bold text-lg mb-6 text-red-600 tracking-tighter">確定要刪除此筆記錄嗎？</h2>
             <div class="flex gap-3">
-                <button onclick="closeModal('deleteModal')" class="flex-1 py-2.5 bg-slate-100 text-slate-500 rounded-lg font-bold text-xs active:scale-95 transition-all">取消</button>
-                <button id="confirmDeleteBtn" class="flex-1 py-2.5 bg-red-600 text-white rounded-lg font-bold text-xs shadow-lg active:scale-95 transition-all">確定刪除</button>
+                <button onclick="closeModal('deleteModal')" class="flex-1 py-2.5 bg-slate-100 text-slate-500 rounded-lg font-bold text-xs hover:bg-slate-200 transition-all">取消</button>
+                <button id="confirmDeleteBtn" class="flex-1 py-2.5 bg-red-600 text-white rounded-lg font-bold text-xs shadow-lg hover:bg-red-700 transition-all">確定刪除</button>
             </div>
         </div>
     </div>
 
+    <!-- 匯入彈窗 -->
     <div id="importModal" class="modal fixed inset-0 bg-black/60 z-50 items-center justify-center p-4">
         <div class="bg-white w-full max-w-sm rounded-xl p-6 shadow-2xl font-bold">
-            <h2 class="text-slate-800 mb-4 tracking-tighter">匯入 CSV 歷史資料</h2>
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-slate-800 tracking-tighter uppercase">匯入 CSV 歷史資料</h2>
+                <button onclick="closeModal('importModal')" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
             <select id="encoding" class="w-full mb-4 border p-2.5 rounded text-xs outline-none"><option value="UTF-8">UTF-8</option><option value="Big5">Big5 (Excel)</option></select>
             <input type="file" id="fileIn" class="hidden" accept=".csv" onchange="handleImport(event)">
-            <button onclick="document.getElementById('fileIn').click()" class="w-full py-10 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 font-bold hover:bg-slate-50 text-xs">點擊選擇檔案上傳</button>
+            <button onclick="document.getElementById('fileIn').click()" class="w-full py-10 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 font-bold hover:bg-slate-50 text-xs transition-all uppercase tracking-widest">點擊選擇檔案上傳</button>
         </div>
     </div>
 </body>
 </html>
-
